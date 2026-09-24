@@ -53,7 +53,7 @@ export default async function handler(req, res) {
     }
 
     const signer = signerFromEnv();
-    const mintString = process.env.SOLANA_DEVNET_USDC_MINT;
+    const mintString = process.env.SOLANA_DEVNET_USDC_MINT || "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
     const fallbackRecipient = process.env.SOLANA_SETTLEMENT_RECEIVER;
     const destination = recipient || fallbackRecipient;
 
