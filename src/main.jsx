@@ -77,35 +77,125 @@ function Metric({ label, value, sub, accent }) {
 }
 
 function PaymentFlow({ close }) {
+  const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState("");
   const [stage, setStage] = useState("upload");
   const [settleStep, setSettleStep] = useState(0);
   const [corridor, setCorridor] = useState("NGN");
+  const [analysis, setAnalysis] = useState(null);
+  const [settlement, setSettlement] = useState(null);
+  const [error, setError] = useState("");
 
-  const result = useMemo(() => ({
-    supplier: corridor === "CNY" ? "Shenzhen Nova Parts Ltd" : "Lagos Studio Co.",
-    amount: corridor === "CNY" ? "¥42,000" : "₦8,250,000",
-    funding: "£4,850.00",
-    fee: "£21.80",
-    eta: corridor === "CNY" ? "Same business day" : "< 10 minutes",
-  }), [corridor]);
+  const result = useMemo(() => {
+    if (!analysis) return {
+      supplier: corridor === "CNY" ? "Shenzhen Nova Parts Ltd" : "Lagos Studio Co.",
+      amount: corridor === "CNY" ? "¥42,000" : "₦8,250,000",
+      funding: "£4,850.00",
+      fee: "£21.80",
+      eta: corridor === "CNY" ? "Same business day" : "< 10 minutes",
+      route: `GBP → USDC/Solana → ${corridor}`,
+      risk: { duplicate: false, beneficiary_changed: true, suspicious: false, missing_fields: [] }
+    };
+    return {
+      supplier: analysis.supplier || "Supplier not extracted",
+      amount: analysis.destination_amount || "Quoted at execution",
+      funding: analysis.source_amount && analysis.source_currency
+        ? new Intl.NumberFormat("en-GB", { style: "currency", currency: analysis.source_currency }).format(analysis.source_amount)
+        : "Confirm from invoice",
+      fee: "Calculated at quote",
+      eta: corridor === "CNY" ? "Same business day" : "< 10 minutes",
+      route: analysis.recommended_route || `${analysis.source_currency || "GBP"} → USDC/Solana → ${analysis.destination_currency || corridor}`,
+      risk: analysis.risk || {}
+    };
+  }, [analysis, corridor]);
 
-  function runAnalysis() {
-    if (!fileName) setFileName("supplier_invoice_0926.pdf");
-    setStage("analyzing");
-    setTimeout(() => setStage("review"), 1100);
+  function fileToBase64(selected) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = () => resolve(String(reader.result).split(",")[1]);
+      reader.readAsDataURL(selected);
+    });
   }
 
-  function approve() {
+  async function runAnalysis() {
+    setError("");
+    setStage("analyzing");
+    try {
+      let payload;
+      if (file) {
+        if (file.size > 3.2 * 1024 * 1024) throw new Error("For the live demo, keep invoices under 3.2 MB.");
+        payload = {
+          fileName: file.name,
+          mimeType: file.type || "application/pdf",
+          fileData: await fileToBase64(file),
+          corridor
+        };
+      } else {
+        const demoText = `INVOICE 33J-DEMO-0926
+Supplier: ${corridor === "CNY" ? "Shenzhen Nova Parts Ltd" : "Lagos Studio Co."}
+Amount due: GBP 4,850
+Target payout currency: ${corridor}
+Due: 30 September 2026
+Beneficiary details: demo account ending 1840
+Please settle this approved supplier invoice.`;
+        payload = {
+          fileName: "33jack_demo_invoice.txt",
+          mimeType: "text/plain",
+          fileData: btoa(demoText),
+          corridor
+        };
+        setFileName("33jack_demo_invoice.txt");
+      }
+
+      const response = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || data.error || "Analysis failed");
+      setAnalysis(data);
+      setStage("review");
+    } catch (e) {
+      setError(e.message || "Analysis failed");
+      setStage("upload");
+    }
+  }
+
+  async function approve() {
+    setError("");
     setStage("settling");
     setSettleStep(1);
-    setTimeout(() => setSettleStep(2), 700);
-    setTimeout(() => setSettleStep(3), 1500);
-    setTimeout(() => {
-      setSettleStep(4);
-      setStage("done");
-    }, 2300);
+    try {
+      setTimeout(() => setSettleStep(2), 450);
+      const response = await fetch("/api/settle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentId: analysis?.id || "pay_" + Date.now().toString(36),
+          invoiceName: fileName || analysis?.invoice_name || "invoice",
+          amountUsdc: 1
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || data.error || "Settlement failed");
+      setSettleStep(3);
+      setSettlement(data);
+      setTimeout(() => {
+        setSettleStep(4);
+        setStage("done");
+      }, 700);
+    } catch (e) {
+      setError(e.message || "Settlement failed");
+      setStage("review");
+    }
   }
+
+  const duplicateKnown = Boolean(result.risk?.duplicate);
+  const beneficiaryChanged = Boolean(result.risk?.beneficiary_changed);
+  const suspicious = Boolean(result.risk?.suspicious);
+  const missing = Array.isArray(result.risk?.missing_fields) ? result.risk.missing_fields : [];
 
   return (
     <div className="modal-wrap" onMouseDown={close}>
@@ -118,17 +208,27 @@ function PaymentFlow({ close }) {
           <button className="icon-btn" onClick={close}>×</button>
         </div>
 
+        {error && <div style={{margin:"14px 24px 0",padding:"10px 12px",border:"1px solid rgba(255,111,125,.25)",borderRadius:10,color:"#ff8994",fontSize:11}}>{error}</div>}
+
         {stage === "upload" && (
           <div className="flow-body">
             <div className="flow-copy">
               <h3>Give 33jack the invoice.</h3>
-              <p>The agent will extract the payment instruction, verify it, prepare a route and ask for one exact approval.</p>
+              <p>The agent extracts the payment instruction, checks risk, prepares a route and asks for one exact approval.</p>
             </div>
             <label className="dropzone">
               <UploadCloud size={28} />
               <strong>{fileName || "Drop invoice here"}</strong>
-              <span>PDF, PNG, JPG or CSV · Demo accepts any file</span>
-              <input type="file" onChange={(e) => setFileName(e.target.files?.[0]?.name || "")} />
+              <span>PDF, PNG, JPG or TXT · up to 3.2 MB · or run the built-in demo</span>
+              <input
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg,.txt,application/pdf,image/png,image/jpeg,text/plain"
+                onChange={(e) => {
+                  const selected = e.target.files?.[0] || null;
+                  setFile(selected);
+                  setFileName(selected?.name || "");
+                }}
+              />
             </label>
             <div className="corridor-row">
               <button className={corridor === "NGN" ? "chip active" : "chip"} onClick={() => setCorridor("NGN")}>Nigeria · NGN</button>
@@ -142,7 +242,7 @@ function PaymentFlow({ close }) {
           <div className="analyzing">
             <div className="pulse-orb"><Bot size={30}/></div>
             <h3>33jack is checking the payment</h3>
-            <p>Extracting invoice · checking beneficiary · duplicate scan · route discovery</p>
+            <p>Extracting invoice · checking payment risk · preparing settlement route</p>
             <div className="progress"><i /></div>
           </div>
         )}
@@ -150,13 +250,25 @@ function PaymentFlow({ close }) {
         {stage === "review" && (
           <div className="review-grid">
             <div className="analysis-card">
-              <span className="eyebrow">AI RISK REVIEW</span>
-              <h3>{fileName || "supplier_invoice_0926.pdf"}</h3>
+              <span className="eyebrow">{analysis?.mode === "ai" ? "LIVE AI RISK REVIEW" : "DEMO RISK REVIEW"}</span>
+              <h3>{fileName || analysis?.invoice_name || "invoice"}</h3>
               <div className="check-list">
-                <div><CheckCircle2/><span><b>No duplicate found</b><small>No matching invoice in payment history.</small></span></div>
-                <div><CheckCircle2/><span><b>Supplier verified</b><small>Beneficiary matches the approved supplier profile.</small></span></div>
-                <div className="warning"><TriangleAlert/><span><b>Bank detail changed</b><small>Account ending ••1840 differs from last payment. Manual acknowledgement required.</small></span></div>
-                <div><CheckCircle2/><span><b>Amount within policy</b><small>Below the £10,000 single-payment approval limit.</small></span></div>
+                <div className={duplicateKnown ? "warning" : ""}>
+                  {duplicateKnown ? <TriangleAlert/> : <CheckCircle2/>}
+                  <span><b>{duplicateKnown ? "Possible duplicate detected" : "No duplicate signal in this analysis"}</b><small>{duplicateKnown ? "Stop and compare against payment history before execution." : "Production duplicate detection also compares stored invoice history."}</small></span>
+                </div>
+                <div className={suspicious ? "warning" : ""}>
+                  {suspicious ? <TriangleAlert/> : <CheckCircle2/>}
+                  <span><b>{suspicious ? "Suspicious invoice signal" : "Invoice structure parsed"}</b><small>{result.risk?.summary || "33jack extracted the payment instruction and surfaced uncertainty."}</small></span>
+                </div>
+                <div className={beneficiaryChanged ? "warning" : ""}>
+                  {beneficiaryChanged ? <TriangleAlert/> : <CheckCircle2/>}
+                  <span><b>{beneficiaryChanged ? "Beneficiary change needs acknowledgement" : "No beneficiary-change claim"}</b><small>{beneficiaryChanged ? "The proposed payment is blocked behind explicit acknowledgement." : "Historical verification is only definitive when beneficiary history is available."}</small></span>
+                </div>
+                <div className={missing.length ? "warning" : ""}>
+                  {missing.length ? <TriangleAlert/> : <CheckCircle2/>}
+                  <span><b>{missing.length ? "Missing information" : "Required fields present"}</b><small>{missing.length ? missing.join(", ") : "No missing fields were reported by the current analysis."}</small></span>
+                </div>
               </div>
             </div>
             <div className="proposal">
@@ -165,29 +277,29 @@ function PaymentFlow({ close }) {
               <div className="proposal-amount">{result.amount}</div>
               <div className="proposal-lines">
                 <p><span>You fund</span><b>{result.funding}</b></p>
-                <p><span>Network</span><b>Solana · USDC</b></p>
+                <p><span>Settlement</span><b>Solana · USDC</b></p>
                 <p><span>Service + FX</span><b>{result.fee}</b></p>
-                <p><span>Delivery</span><b>{result.eta}</b></p>
+                <p><span>Delivery target</span><b>{result.eta}</b></p>
               </div>
               <div className="route">
-                <span>GBP</span><ArrowRight/><span>USDC</span><ArrowRight/><span>{corridor}</span>
+                <span>{analysis?.source_currency || "GBP"}</span><ArrowRight/><span>USDC</span><ArrowRight/><span>{analysis?.destination_currency || corridor}</span>
               </div>
-              <label className="ack"><input type="checkbox" defaultChecked/> I acknowledge the beneficiary-detail change.</label>
+              {beneficiaryChanged && <label className="ack"><input type="checkbox" defaultChecked/> I acknowledge the beneficiary-detail change.</label>}
               <button className="primary wide" onClick={approve}><ShieldCheck size={17}/> Approve exact payment</button>
-              <small className="fine">Demo mode — no real funds are moved.</small>
+              <small className="fine">Devnet-ready: real USDC moves only when the server devnet signer, mint and recipient are configured.</small>
             </div>
           </div>
         )}
 
         {stage === "settling" && (
           <div className="settlement">
-            <span className="eyebrow">LIVE SETTLEMENT</span>
+            <span className="eyebrow">SOLANA SETTLEMENT</span>
             <h3>Executing approved payment</h3>
             {[
               "Approval locked",
               "USDC settlement submitted on Solana",
-              "Local payout initiated",
-              "Recipient confirmed + invoice reconciled"
+              "Settlement response confirmed",
+              "Invoice reconciled"
             ].map((s, i) => (
               <div className={"settle-row " + (settleStep > i ? "complete" : settleStep === i ? "current" : "")} key={s}>
                 <span>{settleStep > i ? <Check size={15}/> : i + 1}</span>
@@ -200,14 +312,16 @@ function PaymentFlow({ close }) {
         {stage === "done" && (
           <div className="done">
             <div className="done-icon"><Check size={32}/></div>
-            <span className="eyebrow">RECONCILED</span>
+            <span className="eyebrow">{settlement?.mode === "devnet" ? "DEVNET SETTLED" : "DEMO RECONCILED"}</span>
             <h2>Payment complete.</h2>
-            <p>{result.supplier} received the payout and the settlement evidence is attached to the invoice.</p>
+            <p>{result.supplier} is linked to the settlement record and the invoice now has an auditable payment state.</p>
             <div className="receipt">
-              <div><span>Solana settlement</span><b>5Tz…8Kq</b></div>
-              <div><span>Invoice</span><b>{fileName || "supplier_invoice_0926.pdf"}</b></div>
+              <div><span>Solana settlement</span><b>{settlement?.signature ? settlement.signature.slice(0, 12) + "…" : "Recorded"}</b></div>
+              <div><span>Invoice</span><b>{fileName || analysis?.invoice_name || "invoice"}</b></div>
+              <div><span>Mode</span><b>{settlement?.mode === "devnet" ? "Solana Devnet" : "Safe demo"}</b></div>
               <div><span>Status</span><b className="green">Matched ✓</b></div>
             </div>
+            {settlement?.explorer && <a className="primary wide" href={settlement.explorer} target="_blank" rel="noreferrer" style={{textDecoration:"none",marginBottom:8}}>View on Solana Explorer <ArrowRight size={16}/></a>}
             <button className="secondary wide" onClick={close}>Back to dashboard</button>
           </div>
         )}
