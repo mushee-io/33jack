@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { listPayments, savePayment } from "./_lib/db.js";
+import { rankRoutes } from "./_lib/routing.js";
 
 export const config = { api: { bodyParser: { sizeLimit: "4mb" } } };
 
@@ -40,8 +41,15 @@ export default async function handler(req, res) {
   }
 
   if (!process.env.OPENAI_API_KEY) {
-    const result = fallback(fileName, corridor);
-    await savePayment({ ...result, status: "analyzed" });
+    const base = fallback(fileName, corridor);
+    const routing = rankRoutes({ destinationCurrency: corridor, sourceAmount: base.source_amount, urgencyMinutes: 1440 });
+    const result = {
+      ...base,
+      recommended_route: routing.best?.label || base.recommended_route,
+      route_options: routing,
+      quote_mode: routing.mode
+    };
+    await savePayment({ ...result, route: result.recommended_route, status: "analyzed" });
     return res.status(200).json({ ...result, notice: "OPENAI_API_KEY is not configured; deterministic demo analysis returned." });
   }
 
@@ -77,7 +85,6 @@ JSON shape:
     "suspicious": boolean,
     "summary": string
   },
-  "recommended_route": string,
   "confidence": number
 }
 
@@ -112,9 +119,16 @@ Important: you cannot truly know whether this invoice is a duplicate or whether 
           ? "33jack found a previous payment record with the same supplier and source amount. Review before approval."
           : parsed.risk?.summary || "No duplicate signal found in stored payment history."
       },
-      recommended_route: parsed.recommended_route || `${parsed.source_currency || "GBP"} → USDC/Solana → ${parsed.destination_currency || corridor}`,
       mode: "ai"
     };
+    const routing = rankRoutes({
+      destinationCurrency: parsed.destination_currency || corridor,
+      sourceAmount: parsed.source_amount || 0,
+      urgencyMinutes: 1440
+    });
+    result.recommended_route = routing.best?.label || `${parsed.source_currency || "GBP"} → USDC/Solana → ${parsed.destination_currency || corridor}`;
+    result.route_options = routing;
+    result.quote_mode = routing.mode;
     await savePayment({ ...result, route: result.recommended_route, status: "analyzed" });
     return res.status(200).json(result);
   } catch (error) {
