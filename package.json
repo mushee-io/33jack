@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:smoke": "node scripts/smoke.mjs"
   },
   "dependencies": {
     "@solana/spl-token": "^0.4.14",
