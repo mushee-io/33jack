@@ -4,7 +4,9 @@
   "outputDirectory": "dist",
   "functions": {
     "api/analyze.js": { "maxDuration": 60 },
+    "api/approve.js": { "maxDuration": 15 },
     "api/settle.js": { "maxDuration": 30 },
-    "api/payments.js": { "maxDuration": 15 }
+    "api/payments.js": { "maxDuration": 15 },
+    "api/health.js": { "maxDuration": 10 }
   }
 }
