@@ -168,20 +168,35 @@ Please settle this approved supplier invoice.`;
     setStage("settling");
     setSettleStep(1);
     try {
-      setTimeout(() => setSettleStep(2), 450);
-      const response = await fetch("/api/settle", {
+      const paymentId = analysis?.id || "pay_" + Date.now().toString(36);
+      const approvalResponse = await fetch("/api/approve", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          paymentId: analysis?.id || "pay_" + Date.now().toString(36),
+          paymentId,
           invoiceName: fileName || analysis?.invoice_name || "invoice",
+          supplier: result.supplier,
+          sourceCurrency: analysis?.source_currency || "GBP",
+          destinationCurrency: analysis?.destination_currency || corridor,
+          sourceAmount: analysis?.source_amount || 4850,
+          destinationAmount: result.amount,
+          route: result.route,
           amountUsdc: 1
         })
+      });
+      const approval = await approvalResponse.json();
+      if (!approvalResponse.ok) throw new Error(approval.detail || approval.error || "Approval failed");
+
+      setSettleStep(2);
+      const response = await fetch("/api/settle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approvalToken: approval.approvalToken })
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || data.error || "Settlement failed");
       setSettleStep(3);
-      setSettlement(data);
+      setSettlement({ ...data, approvalMode: approval.mode });
       setTimeout(() => {
         setSettleStep(4);
         setStage("done");
