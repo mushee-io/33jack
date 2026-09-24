@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { savePayment } from "./_lib/db.js";
+import { listPayments, savePayment } from "./_lib/db.js";
 
 export const config = { api: { bodyParser: { sizeLimit: "4mb" } } };
 
@@ -47,10 +47,14 @@ export default async function handler(req, res) {
 
   try {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const isImage = String(mimeType || "").startsWith("image/");
+    const type = String(mimeType || "");
+    const isImage = type.startsWith("image/");
+    const isPdf = type === "application/pdf" || fileName.toLowerCase().endsWith(".pdf");
     const source = isImage
       ? { type: "input_image", image_url: `data:${mimeType};base64,${fileData}`, detail: "high" }
-      : { type: "input_file", filename: fileName, file_data: `data:${mimeType || "application/pdf"};base64,${fileData}`, detail: "high" };
+      : isPdf
+        ? { type: "input_file", filename: fileName, file_data: `data:${mimeType || "application/pdf"};base64,${fileData}`, detail: "high" }
+        : { type: "input_file", filename: fileName, file_data: `data:${mimeType || "text/plain"};base64,${fileData}` };
 
     const prompt = `You are 33jack's invoice-risk analyst. Extract the commercial payment instruction from this invoice and return ONLY valid JSON.
 Never invent missing values. Flag uncertainty.
@@ -91,10 +95,23 @@ Important: you cannot truly know whether this invoice is a duplicate or whether 
     });
 
     const parsed = extractJson(response.output_text);
+    const previous = await listPayments(50);
+    const duplicate = previous.some((p) =>
+      String(p.supplier || "").toLowerCase() === String(parsed.supplier || "").toLowerCase() &&
+      Number(p.source_amount || 0) === Number(parsed.source_amount || 0) &&
+      ["analyzed","approved","settled_demo","settled_devnet"].includes(String(p.status || ""))
+    );
     const result = {
       id: "pay_" + Date.now().toString(36),
       invoice_name: fileName,
       ...parsed,
+      risk: {
+        ...(parsed.risk || {}),
+        duplicate,
+        summary: duplicate
+          ? "33jack found a previous payment record with the same supplier and source amount. Review before approval."
+          : parsed.risk?.summary || "No duplicate signal found in stored payment history."
+      },
       recommended_route: parsed.recommended_route || `${parsed.source_currency || "GBP"} → USDC/Solana → ${parsed.destination_currency || corridor}`,
       mode: "ai"
     };
