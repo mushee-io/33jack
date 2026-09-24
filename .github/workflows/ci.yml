@@ -20,5 +20,7 @@ jobs:
         run: npm install
       - name: Check serverless syntax
         run: find api -name '*.js' -print0 | xargs -0 -n1 node --check
+      - name: Smoke backend flow
+        run: npm run test:smoke
       - name: Build frontend
         run: npm run build
