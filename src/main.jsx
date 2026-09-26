@@ -76,6 +76,18 @@ function Metric({ label, value, sub, accent }) {
   );
 }
 
+async function readApiResponse(response) {
+  const text = await response.text();
+  try {
+    return text ? JSON.parse(text) : {};
+  } catch {
+    return {
+      error: response.ok ? "Unexpected server response" : "Server error",
+      detail: text || `HTTP ${response.status}`
+    };
+  }
+}
+
 function PaymentFlow({ close, onComplete }) {
   const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState("");
@@ -162,7 +174,7 @@ Please settle this approved supplier invoice.`;
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
-      const data = await response.json();
+      const data = await readApiResponse(response);
       if (!response.ok) throw new Error(data.detail || data.error || "Analysis failed");
       setAnalysis(data);
       setStage("review");
@@ -187,7 +199,7 @@ Please settle this approved supplier invoice.`;
           amountUsdc: 1
         })
       });
-      const approval = await approvalResponse.json();
+      const approval = await readApiResponse(approvalResponse);
       if (!approvalResponse.ok) throw new Error(approval.detail || approval.error || "Approval failed");
 
       setSettleStep(2);
@@ -196,7 +208,7 @@ Please settle this approved supplier invoice.`;
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ approvalToken: approval.approvalToken })
       });
-      const data = await response.json();
+      const data = await readApiResponse(response);
       if (!response.ok) throw new Error(data.detail || data.error || "Settlement failed");
       setSettleStep(3);
       setSettlement({ ...data, approvalMode: approval.mode });
@@ -444,7 +456,7 @@ function AgentWorkspace() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message })
       });
-      const data = await response.json();
+      const data = await readApiResponse(response);
       if (!response.ok) throw new Error(data.detail || data.error || "Agent failed");
       setMessages((m) => [...m, { role: "agent", text: data.answer }]);
     } catch (e) {
@@ -557,7 +569,7 @@ function App() {
   async function refreshPayments() {
     try {
       const response = await fetch("/api/payments?limit=25");
-      const data = await response.json();
+      const data = await readApiResponse(response);
       if (!response.ok) return;
       setLivePayments(Array.isArray(data.payments) ? data.payments : []);
       setPersistence(data.persistence || "unknown");
