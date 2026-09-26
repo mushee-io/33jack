@@ -345,6 +345,20 @@ export async function upsertBeneficiary({ supplier, destinationCurrency, benefic
   return row;
 }
 
+export async function listBeneficiaries(limit = 100) {
+  const client = db();
+  if (!client) return memory.beneficiaries.slice(0, limit);
+  await ensureSchema();
+  return client`
+    select id, supplier_name, destination_currency, bank_name,
+           account_last4, country, payment_handle, metadata,
+           first_seen_at, last_seen_at
+    from jack_beneficiaries
+    order by last_seen_at desc
+    limit ${limit}
+  `;
+}
+
 export function persistenceMode() {
   return process.env.DATABASE_URL ? "postgres" : "memory";
 }
