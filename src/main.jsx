@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   ArrowRight,
@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import "./styles.css";
 
-const payments = [
+const samplePayments = [
   { company: "Nairobi Logistics Ltd", invoice: "INV-8821", amount: "£4,850", route: "GBP → USDC → KES", status: "Settled", time: "12 min ago" },
   { company: "Accra Imports", invoice: "INV-2204", amount: "£12,400", route: "GBP → USDC → GHS", status: "Settled", time: "1 hr ago" },
   { company: "Shenzhen Nova Parts", invoice: "CN-44018", amount: "¥42,000", route: "GBP → USDC → CNY", status: "Review", time: "2 hrs ago" },
@@ -76,7 +76,7 @@ function Metric({ label, value, sub, accent }) {
   );
 }
 
-function PaymentFlow({ close }) {
+function PaymentFlow({ close, onComplete }) {
   const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState("");
   const [stage, setStage] = useState("upload");
@@ -85,6 +85,11 @@ function PaymentFlow({ close }) {
   const [analysis, setAnalysis] = useState(null);
   const [settlement, setSettlement] = useState(null);
   const [error, setError] = useState("");
+  const [acknowledgements, setAcknowledgements] = useState({
+    duplicate: false,
+    beneficiary_changed: false,
+    suspicious: false
+  });
 
   const result = useMemo(() => {
     if (!analysis) return {
@@ -102,8 +107,12 @@ function PaymentFlow({ close }) {
       funding: analysis.source_amount && analysis.source_currency
         ? new Intl.NumberFormat("en-GB", { style: "currency", currency: analysis.source_currency }).format(analysis.source_amount)
         : "Confirm from invoice",
-      fee: "Calculated at quote",
-      eta: corridor === "CNY" ? "Same business day" : "< 10 minutes",
+      fee: analysis.route_options?.best?.estimatedFee != null
+        ? `£${Number(analysis.route_options.best.estimatedFee).toFixed(2)} est.`
+        : "Calculated at quote",
+      eta: analysis.route_options?.best?.etaMinutes
+        ? `${analysis.route_options.best.etaMinutes} min est.`
+        : corridor === "CNY" ? "Same business day" : "< 10 minutes",
       route: analysis.recommended_route || `${analysis.source_currency || "GBP"} → USDC/Solana → ${analysis.destination_currency || corridor}`,
       risk: analysis.risk || {}
     };
@@ -174,13 +183,7 @@ Please settle this approved supplier invoice.`;
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           paymentId,
-          invoiceName: fileName || analysis?.invoice_name || "invoice",
-          supplier: result.supplier,
-          sourceCurrency: analysis?.source_currency || "GBP",
-          destinationCurrency: analysis?.destination_currency || corridor,
-          sourceAmount: analysis?.source_amount || 4850,
-          destinationAmount: result.amount,
-          route: result.route,
+          acknowledgements,
           amountUsdc: 1
         })
       });
@@ -200,6 +203,7 @@ Please settle this approved supplier invoice.`;
       setTimeout(() => {
         setSettleStep(4);
         setStage("done");
+        onComplete?.();
       }, 700);
     } catch (e) {
       setError(e.message || "Settlement failed");
@@ -299,8 +303,48 @@ Please settle this approved supplier invoice.`;
               <div className="route">
                 <span>{analysis?.source_currency || "GBP"}</span><ArrowRight/><span>USDC</span><ArrowRight/><span>{analysis?.destination_currency || corridor}</span>
               </div>
-              {beneficiaryChanged && <label className="ack"><input type="checkbox" defaultChecked/> I acknowledge the beneficiary-detail change.</label>}
-              <button className="primary wide" onClick={approve}><ShieldCheck size={17}/> Approve exact payment</button>
+              {duplicateKnown && (
+                <label className="ack">
+                  <input
+                    type="checkbox"
+                    checked={acknowledgements.duplicate}
+                    onChange={(e) => setAcknowledgements((v) => ({ ...v, duplicate: e.target.checked }))}
+                  />
+                  I reviewed the duplicate warning and still want to continue.
+                </label>
+              )}
+              {beneficiaryChanged && (
+                <label className="ack">
+                  <input
+                    type="checkbox"
+                    checked={acknowledgements.beneficiary_changed}
+                    onChange={(e) => setAcknowledgements((v) => ({ ...v, beneficiary_changed: e.target.checked }))}
+                  />
+                  I acknowledge the beneficiary-detail change.
+                </label>
+              )}
+              {suspicious && (
+                <label className="ack">
+                  <input
+                    type="checkbox"
+                    checked={acknowledgements.suspicious}
+                    onChange={(e) => setAcknowledgements((v) => ({ ...v, suspicious: e.target.checked }))}
+                  />
+                  I reviewed the suspicious-invoice warning.
+                </label>
+              )}
+              <button
+                className="primary wide"
+                onClick={approve}
+                disabled={
+                  missing.length > 0 ||
+                  (duplicateKnown && !acknowledgements.duplicate) ||
+                  (beneficiaryChanged && !acknowledgements.beneficiary_changed) ||
+                  (suspicious && !acknowledgements.suspicious)
+                }
+              >
+                <ShieldCheck size={17}/> Approve exact payment
+              </button>
               <small className="fine">Devnet-ready: real USDC moves only when the server devnet signer, mint and recipient are configured.</small>
             </div>
           </div>
@@ -382,6 +426,44 @@ function ChannelPreview() {
 function App() {
   const [active, setActive] = useState("Overview");
   const [flow, setFlow] = useState(false);
+  const [livePayments, setLivePayments] = useState([]);
+  const [persistence, setPersistence] = useState("loading");
+
+  async function refreshPayments() {
+    try {
+      const response = await fetch("/api/payments?limit=25");
+      const data = await response.json();
+      if (!response.ok) return;
+      setLivePayments(Array.isArray(data.payments) ? data.payments : []);
+      setPersistence(data.persistence || "unknown");
+    } catch {
+      setPersistence("unavailable");
+    }
+  }
+
+  useEffect(() => {
+    refreshPayments();
+  }, []);
+
+  const dashboardPayments = livePayments.length
+    ? livePayments.map((p) => ({
+        company: p.supplier || "Unknown supplier",
+        invoice: p.invoice_number || p.invoice_name || p.id,
+        amount: p.source_amount && p.source_currency
+          ? new Intl.NumberFormat("en-GB", { style: "currency", currency: p.source_currency }).format(Number(p.source_amount))
+          : p.destination_amount || "—",
+        route: p.route || "Route pending",
+        status:
+          p.status === "settled_devnet" || p.status === "settled_demo" ? "Settled"
+          : p.status === "approved" || p.status === "settling" ? "Review"
+          : p.risk?.duplicate || p.risk?.beneficiary_changed || p.risk?.suspicious ? "Flagged"
+          : "Review",
+        time: p.created_at ? new Date(p.created_at).toLocaleString() : "Recorded"
+      }))
+    : samplePayments;
+
+  const settledCount = livePayments.filter((p) => String(p.status).startsWith("settled_")).length;
+  const flaggedCount = livePayments.filter((p) => p.risk?.duplicate || p.risk?.beneficiary_changed || p.risk?.suspicious).length;
 
   return (
     <div className="app">
@@ -434,10 +516,10 @@ function App() {
           </section>
 
           <section className="metrics">
-            <Metric label="Payments this month" value="£245,000" sub="Across 4 corridors" accent="+28%"/>
-            <Metric label="Invoices processed" value="126" sub="18 handled by agent today"/>
-            <Metric label="Risk prevented" value="£18,420" sub="Duplicate + beneficiary flags"/>
-            <Metric label="Reconciliation" value="98.7%" sub="Matched automatically"/>
+            <Metric label="Payment records" value={livePayments.length || "—"} sub={livePayments.length ? `${persistence} persistence` : "No live records yet"}/>
+            <Metric label="Invoices analyzed" value={livePayments.filter((p) => p.status).length || "—"} sub="Stored payment workflow records"/>
+            <Metric label="Risk flags" value={flaggedCount || "—"} sub="Duplicate / beneficiary / suspicious"/>
+            <Metric label="Settled" value={settledCount || "—"} sub="Devnet + safe demo settlements"/>
           </section>
 
           <section className="panel-grid">
@@ -445,7 +527,7 @@ function App() {
               <div className="card-head"><div><span className="eyebrow">OPERATIONS</span><h3>Recent activity</h3></div><button>View all</button></div>
               <div className="table">
                 <div className="tr th"><span>Supplier</span><span>Amount</span><span>Route</span><span>Status</span></div>
-                {payments.map((p) => (
+                {dashboardPayments.map((p) => (
                   <div className="tr" key={p.invoice}>
                     <span><i className="company-icon">{p.company.slice(0,2).toUpperCase()}</i><b>{p.company}</b><small>{p.invoice} · {p.time}</small></span>
                     <span><b>{p.amount}</b></span>
@@ -495,7 +577,7 @@ function App() {
           <footer><Logo/><p>Autonomous cross-border finance for global businesses.</p><span>Colosseum build · Solana</span></footer>
         </div>
       </main>
-      {flow && <PaymentFlow close={() => setFlow(false)}/>}
+      {flow && <PaymentFlow close={() => setFlow(false)} onComplete={refreshPayments}/>}
     </div>
   );
 }
