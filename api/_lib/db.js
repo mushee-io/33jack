@@ -11,7 +11,17 @@ const memory = globalThis.__33jackStore || (globalThis.__33jackStore = {
 });
 
 function db() {
-  if (!process.env.DATABASE_URL) return null;
+  if (!process.env.DATABASE_URL) {
+    const isProduction =
+      process.env.VERCEL_ENV === "production" ||
+      process.env.NODE_ENV === "production";
+
+    if (isProduction) {
+      throw new Error("DATABASE_URL is required in production. Memory persistence is disabled.");
+    }
+    return null;
+  }
+
   if (!sql) sql = postgres(process.env.DATABASE_URL, { ssl: "require", max: 2 });
   return sql;
 }
@@ -360,5 +370,9 @@ export async function listBeneficiaries(limit = 100) {
 }
 
 export function persistenceMode() {
-  return process.env.DATABASE_URL ? "postgres" : "memory";
+  if (process.env.DATABASE_URL) return "postgres";
+  const isProduction =
+    process.env.VERCEL_ENV === "production" ||
+    process.env.NODE_ENV === "production";
+  return isProduction ? "unavailable" : "memory";
 }
