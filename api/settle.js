@@ -1,9 +1,9 @@
+import bs58 from "bs58";
 import {
   Connection,
   Keypair,
   PublicKey,
-  Transaction,
-  sendAndConfirmTransaction
+  Transaction
 } from "@solana/web3.js";
 import {
   createAssociatedTokenAccountIdempotentInstruction,
@@ -52,28 +52,84 @@ function assertApprovalMatches(payment, approved) {
   }
 }
 
+async function existingSettlementResponse(payment, connection) {
+  if ([PAYMENT_STATUS.SETTLED_DEMO, PAYMENT_STATUS.SETTLED_DEVNET].includes(payment.status) && payment.settlement_signature) {
+    const isDevnet = payment.status === PAYMENT_STATUS.SETTLED_DEVNET;
+    return {
+      mode: isDevnet ? "devnet" : "demo",
+      signature: payment.settlement_signature,
+      explorer: isDevnet
+        ? `https://explorer.solana.com/tx/${payment.settlement_signature}?cluster=devnet`
+        : null,
+      idempotent: true,
+      status: payment.status
+    };
+  }
+
+  if (
+    [PAYMENT_STATUS.SETTLING, PAYMENT_STATUS.FAILED].includes(payment.status) &&
+    payment.settlement_signature &&
+    !String(payment.settlement_signature).startsWith("demo_")
+  ) {
+    const status = await connection.getSignatureStatus(payment.settlement_signature, {
+      searchTransactionHistory: true
+    });
+
+    const confirmed = ["confirmed", "finalized"].includes(status?.value?.confirmationStatus);
+    if (confirmed && !status?.value?.err) {
+      await transitionPayment(
+        payment.id,
+        PAYMENT_STATUS.SETTLED_DEVNET,
+        {},
+        "reconciliation-engine",
+        {
+          recovered_signature: payment.settlement_signature,
+          previous_status: payment.status
+        }
+      );
+
+      return {
+        mode: "devnet",
+        signature: payment.settlement_signature,
+        explorer: `https://explorer.solana.com/tx/${payment.settlement_signature}?cluster=devnet`,
+        idempotent: true,
+        reconciled: true,
+        status: PAYMENT_STATUS.SETTLED_DEVNET
+      };
+    }
+
+    return {
+      mode: "devnet",
+      signature: payment.settlement_signature,
+      explorer: `https://explorer.solana.com/tx/${payment.settlement_signature}?cluster=devnet`,
+      idempotent: true,
+      pending: true,
+      status: payment.status
+    };
+  }
+
+  return null;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
   let payment;
+  let connection;
+
   try {
     const { approvalToken, recipient } = req.body || {};
     const approved = verifyApproval(approvalToken);
     const paymentId = approved.paymentId;
-    payment = await getPayment(paymentId);
 
+    payment = await getPayment(paymentId);
     if (!payment) return res.status(404).json({ error: "Payment not found" });
 
-    if ([PAYMENT_STATUS.SETTLED_DEMO, PAYMENT_STATUS.SETTLED_DEVNET].includes(payment.status) && payment.settlement_signature) {
-      const isDevnet = payment.status === PAYMENT_STATUS.SETTLED_DEVNET;
-      return res.status(200).json({
-        mode: isDevnet ? "devnet" : "demo",
-        signature: payment.settlement_signature,
-        explorer: isDevnet
-          ? `https://explorer.solana.com/tx/${payment.settlement_signature}?cluster=devnet`
-          : null,
-        idempotent: true
-      });
+    connection = new Connection(DEVNET, "confirmed");
+
+    const existingResponse = await existingSettlementResponse(payment, connection);
+    if (existingResponse) {
+      return res.status(existingResponse.pending ? 202 : 200).json(existingResponse);
     }
 
     if (payment.status !== PAYMENT_STATUS.APPROVED) {
@@ -97,14 +153,6 @@ export default async function handler(req, res) {
       });
     }
 
-    await transitionPayment(
-      payment.id,
-      PAYMENT_STATUS.SETTLING,
-      {},
-      "settlement-engine",
-      { amount_usdc: amountUsdc }
-    );
-
     const signer = signerFromEnv();
     const mintString =
       process.env.SOLANA_DEVNET_USDC_MINT ||
@@ -114,17 +162,28 @@ export default async function handler(req, res) {
 
     if (!signer || !mintString || !destination) {
       const simulated = "demo_" + Math.random().toString(36).slice(2, 12);
+
+      await transitionPayment(
+        payment.id,
+        PAYMENT_STATUS.SETTLING,
+        { settlement_signature: simulated },
+        "settlement-engine",
+        { mode: "demo", amount_usdc: amountUsdc }
+      );
+
       await transitionPayment(
         payment.id,
         PAYMENT_STATUS.SETTLED_DEMO,
-        { settlement_signature: simulated },
+        {},
         "settlement-engine",
         { mode: "demo", signature: simulated }
       );
+
       await addAuditEvent(payment.id, "settlement_confirmed", "settlement-engine", {
         mode: "demo",
         signature: simulated
       });
+
       return res.status(200).json({
         mode: "demo",
         signature: simulated,
@@ -135,11 +194,11 @@ export default async function handler(req, res) {
       });
     }
 
-    const connection = new Connection(DEVNET, "confirmed");
     const mint = new PublicKey(mintString);
     const receiver = new PublicKey(destination);
     const senderAta = await getAssociatedTokenAddress(mint, signer.publicKey);
     const receiverAta = await getAssociatedTokenAddress(mint, receiver);
+    const latest = await connection.getLatestBlockhash("confirmed");
 
     const tx = new Transaction().add(
       createAssociatedTokenAccountIdempotentInstruction(
@@ -158,19 +217,65 @@ export default async function handler(req, res) {
       )
     );
 
-    const signature = await sendAndConfirmTransaction(connection, tx, [signer], {
-      commitment: "confirmed"
+    tx.feePayer = signer.publicKey;
+    tx.recentBlockhash = latest.blockhash;
+    tx.sign(signer);
+
+    if (!tx.signature) throw new Error("Transaction signing failed");
+    const precomputedSignature = bs58.encode(tx.signature);
+
+    await transitionPayment(
+      payment.id,
+      PAYMENT_STATUS.SETTLING,
+      { settlement_signature: precomputedSignature },
+      "settlement-engine",
+      {
+        mode: "devnet",
+        amount_usdc: amountUsdc,
+        signature: precomputedSignature,
+        mint: mint.toBase58(),
+        recipient: receiver.toBase58()
+      }
+    );
+
+    await addAuditEvent(payment.id, "transaction_signed", "settlement-engine", {
+      signature: precomputedSignature,
+      blockhash: latest.blockhash,
+      last_valid_block_height: latest.lastValidBlockHeight
     });
-    const explorer = `https://explorer.solana.com/tx/${signature}?cluster=devnet`;
+
+    const networkSignature = await connection.sendRawTransaction(tx.serialize(), {
+      skipPreflight: false,
+      maxRetries: 3
+    });
+
+    if (networkSignature !== precomputedSignature) {
+      throw new Error("Network signature did not match the precomputed transaction signature");
+    }
+
+    const confirmation = await connection.confirmTransaction(
+      {
+        signature: networkSignature,
+        blockhash: latest.blockhash,
+        lastValidBlockHeight: latest.lastValidBlockHeight
+      },
+      "confirmed"
+    );
+
+    if (confirmation?.value?.err) {
+      throw new Error(`Solana transaction failed: ${JSON.stringify(confirmation.value.err)}`);
+    }
+
+    const explorer = `https://explorer.solana.com/tx/${networkSignature}?cluster=devnet`;
 
     await transitionPayment(
       payment.id,
       PAYMENT_STATUS.SETTLED_DEVNET,
-      { settlement_signature: signature },
+      {},
       "settlement-engine",
       {
         mode: "devnet",
-        signature,
+        signature: networkSignature,
         mint: mint.toBase58(),
         recipient: receiver.toBase58()
       }
@@ -188,20 +293,20 @@ export default async function handler(req, res) {
 
     await addAuditEvent(payment.id, "settlement_confirmed", "settlement-engine", {
       mode: "devnet",
-      signature,
+      signature: networkSignature,
       explorer
     });
 
     return res.status(200).json({
       mode: "devnet",
-      signature,
+      signature: networkSignature,
       explorer,
       idempotent: false
     });
   } catch (error) {
     console.error("settlement failed", error);
 
-    if (payment?.id && payment.status === PAYMENT_STATUS.APPROVED) {
+    if (payment?.id) {
       try {
         const current = await getPayment(payment.id);
         if (current?.status === PAYMENT_STATUS.SETTLING) {
@@ -210,7 +315,10 @@ export default async function handler(req, res) {
             PAYMENT_STATUS.FAILED,
             {},
             "settlement-engine",
-            { error: error?.message || "Unknown error" }
+            {
+              error: error?.message || "Unknown error",
+              signature: current.settlement_signature || null
+            }
           );
         }
       } catch {
