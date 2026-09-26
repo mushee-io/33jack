@@ -30,10 +30,10 @@ import {
 import "./styles.css";
 
 const samplePayments = [
-  { company: "Nairobi Logistics Ltd", invoice: "INV-8821", amount: "£4,850", route: "GBP → USDC → KES", status: "Settled", time: "12 min ago" },
-  { company: "Accra Imports", invoice: "INV-2204", amount: "£12,400", route: "GBP → USDC → GHS", status: "Settled", time: "1 hr ago" },
-  { company: "Shenzhen Nova Parts", invoice: "CN-44018", amount: "¥42,000", route: "GBP → USDC → CNY", status: "Review", time: "2 hrs ago" },
-  { company: "Lagos Studio Co.", invoice: "LS-0192", amount: "£2,100", route: "GBP → USDC → NGN", status: "Flagged", time: "Yesterday" },
+  { company: "Austin Software Inc.", invoice: "US-33018", amount: "$6,250", route: "GBP → USDC → USD", status: "Settled", time: "12 min ago" },
+  { company: "Shenzhen Nova Parts", invoice: "CN-44018", amount: "¥42,000", route: "USD → USDC → CNY", status: "Review", time: "1 hr ago" },
+  { company: "Bengaluru Cloud Services", invoice: "IN-77104", amount: "₹405,000", route: "USD → USDC → INR", status: "Settled", time: "2 hrs ago" },
+  { company: "London Creative Systems", invoice: "GB-11820", amount: "£4,850", route: "USD → USDC → GBP", status: "Review", time: "Yesterday" },
 ];
 
 const nav = [
@@ -93,7 +93,7 @@ function PaymentFlow({ close, onComplete }) {
   const [fileName, setFileName] = useState("");
   const [stage, setStage] = useState("upload");
   const [settleStep, setSettleStep] = useState(0);
-  const [corridor, setCorridor] = useState("NGN");
+  const [corridor, setCorridor] = useState("USD");
   const [analysis, setAnalysis] = useState(null);
   const [settlement, setSettlement] = useState(null);
   const [error, setError] = useState("");
@@ -104,15 +104,23 @@ function PaymentFlow({ close, onComplete }) {
   });
 
   const result = useMemo(() => {
-    if (!analysis) return {
-      supplier: corridor === "CNY" ? "Shenzhen Nova Parts Ltd" : "Lagos Studio Co.",
-      amount: corridor === "CNY" ? "¥42,000" : "₦8,250,000",
-      funding: "£4,850.00",
-      fee: "£21.80",
-      eta: corridor === "CNY" ? "Same business day" : "< 10 minutes",
-      route: `GBP → USDC/Solana → ${corridor}`,
-      risk: { duplicate: false, beneficiary_changed: true, suspicious: false, missing_fields: [] }
-    };
+    if (!analysis) {
+      const demo = {
+        USD: { supplier: "Austin Software Inc.", amount: "$6,250", funding: "£4,850.00", eta: "20 min est.", source: "GBP" },
+        CNY: { supplier: "Shenzhen Nova Parts Ltd", amount: "¥42,000", funding: "$5,900.00", eta: "4 hr est.", source: "USD" },
+        INR: { supplier: "Bengaluru Cloud Services Pvt Ltd", amount: "₹405,000", funding: "$4,850.00", eta: "45 min est.", source: "USD" },
+        GBP: { supplier: "London Creative Systems Ltd", amount: "£4,850", funding: "$6,250.00", eta: "20 min est.", source: "USD" }
+      }[corridor];
+      return {
+        supplier: demo.supplier,
+        amount: demo.amount,
+        funding: demo.funding,
+        fee: "Calculated at quote",
+        eta: demo.eta,
+        route: `${demo.source} → USDC/Solana → ${corridor}`,
+        risk: { duplicate: false, beneficiary_changed: false, suspicious: false, missing_fields: [] }
+      };
+    }
     return {
       supplier: analysis.supplier || "Supplier not extracted",
       amount: analysis.destination_amount || "Quoted at execution",
@@ -153,9 +161,16 @@ function PaymentFlow({ close, onComplete }) {
           corridor
         };
       } else {
-        const demoText = `INVOICE 33J-DEMO-0926
-Supplier: ${corridor === "CNY" ? "Shenzhen Nova Parts Ltd" : "Lagos Studio Co."}
-Amount due: GBP 4,850
+        const demos = {
+          USD: ["Austin Software Inc.", "GBP 4,850"],
+          CNY: ["Shenzhen Nova Parts Ltd", "USD 5,900"],
+          INR: ["Bengaluru Cloud Services Pvt Ltd", "USD 4,850"],
+          GBP: ["London Creative Systems Ltd", "USD 6,250"]
+        };
+        const [demoSupplier, demoAmount] = demos[corridor];
+        const demoText = `INVOICE 33J-DEMO-0926-${corridor}
+Supplier: ${demoSupplier}
+Amount due: ${demoAmount}
 Target payout currency: ${corridor}
 Due: 30 September 2026
 Beneficiary details: demo account ending 1840
@@ -262,8 +277,10 @@ Please settle this approved supplier invoice.`;
               />
             </label>
             <div className="corridor-row">
-              <button className={corridor === "NGN" ? "chip active" : "chip"} onClick={() => setCorridor("NGN")}>Nigeria · NGN</button>
+              <button className={corridor === "USD" ? "chip active" : "chip"} onClick={() => setCorridor("USD")}>United States · USD</button>
               <button className={corridor === "CNY" ? "chip active" : "chip"} onClick={() => setCorridor("CNY")}>China · CNY</button>
+              <button className={corridor === "INR" ? "chip active" : "chip"} onClick={() => setCorridor("INR")}>India · INR</button>
+              <button className={corridor === "GBP" ? "chip active" : "chip"} onClick={() => setCorridor("GBP")}>United Kingdom · GBP</button>
             </div>
             <button className="primary wide" onClick={runAnalysis}><Sparkles size={17}/> Analyse invoice <ArrowRight size={17}/></button>
           </div>
