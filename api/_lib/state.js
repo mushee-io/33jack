@@ -12,7 +12,7 @@ const transitions = {
   analyzed: new Set(["approved", "rejected"]),
   approved: new Set(["settling", "rejected"]),
   settling: new Set(["settled_demo", "settled_devnet", "failed"]),
-  failed: new Set(["approved", "rejected"]),
+  failed: new Set(["approved", "rejected", "settled_devnet", "settled_demo"]),
   settled_demo: new Set(),
   settled_devnet: new Set(),
   rejected: new Set()
