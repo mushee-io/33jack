@@ -1,15 +1,3 @@
-import bs58 from "bs58";
-import {
-  Connection,
-  Keypair,
-  PublicKey,
-  Transaction
-} from "@solana/web3.js";
-import {
-  createAssociatedTokenAccountIdempotentInstruction,
-  createTransferCheckedInstruction,
-  getAssociatedTokenAddress
-} from "@solana/spl-token";
 import { verifyApproval } from "./_lib/approval.js";
 import {
   addAuditEvent,
@@ -20,12 +8,6 @@ import {
 import { PAYMENT_STATUS } from "./_lib/state.js";
 
 const DEVNET = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
-
-function signerFromEnv() {
-  if (!process.env.SOLANA_DEVNET_PAYER_SECRET_KEY) return null;
-  const raw = JSON.parse(process.env.SOLANA_DEVNET_PAYER_SECRET_KEY);
-  return Keypair.fromSecretKey(Uint8Array.from(raw));
-}
 
 function sameText(a, b) {
   return String(a ?? "").trim() === String(b ?? "").trim();
@@ -125,42 +107,39 @@ export default async function handler(req, res) {
     payment = await getPayment(paymentId);
     if (!payment) return res.status(404).json({ error: "Payment not found" });
 
-    connection = new Connection(DEVNET, "confirmed");
+    const hasDevnetConfig = Boolean(
+      process.env.SOLANA_DEVNET_PAYER_SECRET_KEY &&
+      process.env.SOLANA_SETTLEMENT_RECEIVER
+    );
 
-    const existingResponse = await existingSettlementResponse(payment, connection);
-    if (existingResponse) {
-      return res.status(existingResponse.pending ? 202 : 200).json(existingResponse);
-    }
+    if (!hasDevnetConfig) {
+      if ([PAYMENT_STATUS.SETTLED_DEMO, PAYMENT_STATUS.SETTLED_DEVNET].includes(payment.status) && payment.settlement_signature) {
+        const isDevnet = payment.status === PAYMENT_STATUS.SETTLED_DEVNET;
+        return res.status(200).json({
+          mode: isDevnet ? "devnet" : "demo",
+          signature: payment.settlement_signature,
+          explorer: isDevnet
+            ? `https://explorer.solana.com/tx/${payment.settlement_signature}?cluster=devnet`
+            : null,
+          idempotent: true,
+          status: payment.status
+        });
+      }
 
-    if (payment.status !== PAYMENT_STATUS.APPROVED) {
-      return res.status(409).json({
-        error: "Payment is not approved",
-        detail: `Current status is ${payment.status}`
-      });
-    }
+      if (payment.status !== PAYMENT_STATUS.APPROVED) {
+        return res.status(409).json({
+          error: "Payment is not approved",
+          detail: `Current status is ${payment.status}`
+        });
+      }
 
-    assertApprovalMatches(payment, approved);
+      assertApprovalMatches(payment, approved);
 
-    const amountUsdc = Number(approved.amountUsdc || 1);
-    if (!Number.isFinite(amountUsdc) || amountUsdc <= 0) {
-      return res.status(400).json({ error: "Approved USDC amount is invalid" });
-    }
+      const amountUsdc = Number(approved.amountUsdc || 1);
+      if (!Number.isFinite(amountUsdc) || amountUsdc <= 0) {
+        return res.status(400).json({ error: "Approved USDC amount is invalid" });
+      }
 
-    const max = Number(process.env.MAX_DEVNET_USDC_PER_PAYMENT || 5);
-    if (amountUsdc > max) {
-      return res.status(400).json({
-        error: `Approved amount exceeds Devnet safety limit of ${max} USDC`
-      });
-    }
-
-    const signer = signerFromEnv();
-    const mintString =
-      process.env.SOLANA_DEVNET_USDC_MINT ||
-      "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
-    const fallbackRecipient = process.env.SOLANA_SETTLEMENT_RECEIVER;
-    const destination = recipient || fallbackRecipient;
-
-    if (!signer || !mintString || !destination) {
       const simulated = "demo_" + Math.random().toString(36).slice(2, 12);
 
       await transitionPayment(
@@ -193,6 +172,64 @@ export default async function handler(req, res) {
           "Approval was verified and state was reconciled, but Devnet signer/recipient are not configured, so no tokens were moved."
       });
     }
+
+    const [
+      { default: bs58 },
+      web3,
+      splToken
+    ] = await Promise.all([
+      import("bs58"),
+      import("@solana/web3.js"),
+      import("@solana/spl-token")
+    ]);
+
+    const {
+      Connection,
+      Keypair,
+      PublicKey,
+      Transaction
+    } = web3;
+    const {
+      createAssociatedTokenAccountIdempotentInstruction,
+      createTransferCheckedInstruction,
+      getAssociatedTokenAddress
+    } = splToken;
+
+    const raw = JSON.parse(process.env.SOLANA_DEVNET_PAYER_SECRET_KEY);
+    const signer = Keypair.fromSecretKey(Uint8Array.from(raw));
+    connection = new Connection(DEVNET, "confirmed");
+
+    const existingResponse = await existingSettlementResponse(payment, connection);
+    if (existingResponse) {
+      return res.status(existingResponse.pending ? 202 : 200).json(existingResponse);
+    }
+
+    if (payment.status !== PAYMENT_STATUS.APPROVED) {
+      return res.status(409).json({
+        error: "Payment is not approved",
+        detail: `Current status is ${payment.status}`
+      });
+    }
+
+    assertApprovalMatches(payment, approved);
+
+    const amountUsdc = Number(approved.amountUsdc || 1);
+    if (!Number.isFinite(amountUsdc) || amountUsdc <= 0) {
+      return res.status(400).json({ error: "Approved USDC amount is invalid" });
+    }
+
+    const max = Number(process.env.MAX_DEVNET_USDC_PER_PAYMENT || 5);
+    if (amountUsdc > max) {
+      return res.status(400).json({
+        error: `Approved amount exceeds Devnet safety limit of ${max} USDC`
+      });
+    }
+
+    const mintString =
+      process.env.SOLANA_DEVNET_USDC_MINT ||
+      "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
+    const fallbackRecipient = process.env.SOLANA_SETTLEMENT_RECEIVER;
+    const destination = recipient || fallbackRecipient;
 
     const mint = new PublicKey(mintString);
     const receiver = new PublicKey(destination);
