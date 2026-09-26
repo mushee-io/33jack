@@ -25,7 +25,7 @@ process.env.SOLANA_SETTLEMENT_RECEIVER = "";
 process.env.APPROVAL_HMAC_SECRET = "ci-smoke-secret";
 
 const invoice = Buffer.from(
-  "INVOICE 33J-CI-1\nSupplier: Lagos Studio Co.\nAmount due: GBP 4850\nTarget: NGN",
+  "INVOICE 33J-CI-1\nSupplier: Austin Software Inc.\nAmount due: GBP 4850\nTarget: USD",
   "utf8"
 ).toString("base64");
 
@@ -33,12 +33,12 @@ const first = await invoke(analyze, "POST", {
   fileName: "ci-invoice.txt",
   mimeType: "text/plain",
   fileData: invoice,
-  corridor: "NGN"
+  corridor: "USD"
 });
 
 assert.equal(first.status, 200);
 assert.ok(first.data.id);
-assert.equal(first.data.destination_currency, "NGN");
+assert.equal(first.data.destination_currency, "USD");
 assert.ok(first.data.recommended_route);
 assert.equal(first.data.risk.duplicate, false);
 assert.ok(first.data.invoice_hash);
@@ -78,7 +78,7 @@ const duplicate = await invoke(analyze, "POST", {
   fileName: "ci-invoice-copy.txt",
   mimeType: "text/plain",
   fileData: invoice,
-  corridor: "NGN"
+  corridor: "USD"
 });
 assert.equal(duplicate.status, 200);
 assert.equal(duplicate.data.risk.duplicate, true);
