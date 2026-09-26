@@ -11,33 +11,71 @@ import { rankRoutes } from "./_lib/routing.js";
 
 export const config = { api: { bodyParser: { sizeLimit: "4mb" } } };
 
-const fallback = (name = "supplier_invoice.pdf", corridor = "NGN") => ({
-  id: "pay_" + Date.now().toString(36),
-  invoice_name: name,
-  supplier: corridor === "CNY" ? "Shenzhen Nova Parts Ltd" : "Lagos Studio Co.",
-  invoice_number: corridor === "CNY" ? "CN-44018" : "LS-0192",
-  source_currency: "GBP",
-  source_amount: 4850,
-  destination_currency: corridor,
-  destination_amount: corridor === "CNY" ? "¥42,000" : "₦8,250,000",
-  due_date: null,
-  beneficiary: {
-    name: corridor === "CNY" ? "Shenzhen Nova Parts Ltd" : "Lagos Studio Co.",
-    bank_name: "Demo Settlement Bank",
-    account_last4: "1840",
-    country: corridor === "CNY" ? "CN" : "NG",
-    payment_handle: null
+const DEMO_INVOICES = {
+  USD: {
+    supplier: "Austin Software Inc.",
+    invoice_number: "US-33018",
+    source_currency: "GBP",
+    source_amount: 4850,
+    destination_amount: "$6,250",
+    country: "US"
   },
-  risk: {
-    duplicate: false,
-    beneficiary_changed: false,
-    missing_fields: [],
-    suspicious: false,
-    summary: "Demo analysis completed. Production beneficiary-change checks require stored beneficiary history."
+  CNY: {
+    supplier: "Shenzhen Nova Parts Ltd",
+    invoice_number: "CN-44018",
+    source_currency: "USD",
+    source_amount: 5900,
+    destination_amount: "¥42,000",
+    country: "CN"
   },
-  confidence: 0.91,
-  mode: "demo"
-});
+  INR: {
+    supplier: "Bengaluru Cloud Services Pvt Ltd",
+    invoice_number: "IN-77104",
+    source_currency: "USD",
+    source_amount: 4850,
+    destination_amount: "₹405,000",
+    country: "IN"
+  },
+  GBP: {
+    supplier: "London Creative Systems Ltd",
+    invoice_number: "GB-11820",
+    source_currency: "USD",
+    source_amount: 6250,
+    destination_amount: "£4,850",
+    country: "GB"
+  }
+};
+
+const fallback = (name = "supplier_invoice.pdf", corridor = "USD") => {
+  const selected = DEMO_INVOICES[corridor] || DEMO_INVOICES.USD;
+  return {
+    id: "pay_" + Date.now().toString(36),
+    invoice_name: name,
+    supplier: selected.supplier,
+    invoice_number: selected.invoice_number,
+    source_currency: selected.source_currency,
+    source_amount: selected.source_amount,
+    destination_currency: corridor,
+    destination_amount: selected.destination_amount,
+    due_date: null,
+    beneficiary: {
+      name: selected.supplier,
+      bank_name: "Demo Settlement Bank",
+      account_last4: "1840",
+      country: selected.country,
+      payment_handle: null
+    },
+    risk: {
+      duplicate: false,
+      beneficiary_changed: false,
+      missing_fields: [],
+      suspicious: false,
+      summary: "Demo analysis completed. Production beneficiary-change checks require stored beneficiary history."
+    },
+    confidence: 0.91,
+    mode: "demo"
+  };
+};
 
 function extractJson(text) {
   const cleaned = String(text || "").replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
@@ -77,7 +115,7 @@ function missingCoreFields(parsed) {
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
-  const { fileName, mimeType, fileData, corridor = "NGN" } = req.body || {};
+  const { fileName, mimeType, fileData, corridor = "USD" } = req.body || {};
   if (!fileName || !fileData) {
     return res.status(400).json({ error: "fileName and fileData are required" });
   }
