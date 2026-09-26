@@ -3,13 +3,32 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/analyze.js": { "maxDuration": 60 },
-    "api/approve.js": { "maxDuration": 15 },
-    "api/settle.js": { "maxDuration": 30 },
-    "api/reconcile.js": { "maxDuration": 20 },
-    "api/payments.js": { "maxDuration": 15 },
-    "api/payment.js": { "maxDuration": 15 },
-    "api/beneficiaries.js": { "maxDuration": 15 },
-    "api/health.js": { "maxDuration": 10 }
+    "api/analyze.js": {
+      "maxDuration": 60
+    },
+    "api/approve.js": {
+      "maxDuration": 15
+    },
+    "api/settle.js": {
+      "maxDuration": 30
+    },
+    "api/reconcile.js": {
+      "maxDuration": 20
+    },
+    "api/payments.js": {
+      "maxDuration": 15
+    },
+    "api/payment.js": {
+      "maxDuration": 15
+    },
+    "api/beneficiaries.js": {
+      "maxDuration": 15
+    },
+    "api/health.js": {
+      "maxDuration": 10
+    },
+    "api/agent.js": {
+      "maxDuration": 45
+    }
   }
 }
