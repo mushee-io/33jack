@@ -423,6 +423,131 @@ function ChannelPreview() {
   );
 }
 
+
+function AgentWorkspace() {
+  const [messages, setMessages] = useState([
+    { role: "agent", text: "Ask me about payment risk, failures, suppliers, or what needs attention. I am read-only here; money movement stays behind the structured approval flow." }
+  ]);
+  const [input, setInput] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function askAgent(e) {
+    e?.preventDefault();
+    const message = input.trim();
+    if (!message || busy) return;
+    setMessages((m) => [...m, { role: "user", text: message }]);
+    setInput("");
+    setBusy(true);
+    try {
+      const response = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || data.error || "Agent failed");
+      setMessages((m) => [...m, { role: "agent", text: data.answer }]);
+    } catch (e) {
+      setMessages((m) => [...m, { role: "agent", text: "I could not read the finance state right now: " + (e.message || "unknown error") }]);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="workspace-page">
+      <div className="section-head">
+        <div>
+          <span className="eyebrow">33JACK OPERATOR</span>
+          <h2>Ask the business finance state.</h2>
+        </div>
+        <p>Read-only reasoning over stored payments, risk flags and beneficiary history. Execution stays in the controlled payment flow.</p>
+      </div>
+      <div className="agent-console card">
+        <div className="agent-transcript">
+          {messages.map((m, i) => (
+            <div key={i} className={"operator-message " + m.role}>
+              <span>{m.role === "agent" ? "33" : "YOU"}</span>
+              <p>{m.text}</p>
+            </div>
+          ))}
+          {busy && <div className="operator-message agent"><span>33</span><p>Checking live 33jack state…</p></div>}
+        </div>
+        <form className="operator-input" onSubmit={askAgent}>
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="What payments need my attention?"
+            maxLength={2000}
+          />
+          <button className="primary" disabled={busy || !input.trim()}><Send size={16}/> Ask</button>
+        </form>
+      </div>
+    </section>
+  );
+}
+
+function RecordsWorkspace({ type, payments, onNewPayment }) {
+  const [beneficiaries, setBeneficiaries] = useState([]);
+
+  useEffect(() => {
+    if (type !== "Beneficiaries") return;
+    fetch("/api/beneficiaries")
+      .then((r) => r.json())
+      .then((d) => setBeneficiaries(Array.isArray(d.beneficiaries) ? d.beneficiaries : []))
+      .catch(() => setBeneficiaries([]));
+  }, [type]);
+
+  if (type === "Beneficiaries") {
+    return (
+      <section className="workspace-page">
+        <div className="section-head">
+          <div><span className="eyebrow">BENEFICIARY REGISTRY</span><h2>Known supplier payout profiles.</h2></div>
+          <p>Profiles are created after successful settlement and only retain limited payout fingerprints such as bank name and last four characters.</p>
+        </div>
+        <div className="card records-card">
+          <div className="records-head"><span>Supplier</span><span>Currency</span><span>Bank / Handle</span><span>Last seen</span></div>
+          {beneficiaries.length ? beneficiaries.map((b) => (
+            <div className="records-row" key={b.id || b.supplier_name + b.destination_currency}>
+              <span><b>{b.supplier_name}</b><small>{b.country || "—"}</small></span>
+              <span>{b.destination_currency || "—"}</span>
+              <span>{b.bank_name || b.payment_handle || "—"}{b.account_last4 ? " · ••••" + b.account_last4 : ""}</span>
+              <span>{b.last_seen_at ? new Date(b.last_seen_at).toLocaleString() : "—"}</span>
+            </div>
+          )) : <div className="empty-records">No verified beneficiary history yet.</div>}
+        </div>
+      </section>
+    );
+  }
+
+  const filtered = type === "Approvals"
+    ? payments.filter((p) => ["analyzed", "failed"].includes(String(p.status || "")))
+    : payments;
+
+  return (
+    <section className="workspace-page">
+      <div className="section-head">
+        <div>
+          <span className="eyebrow">{type.toUpperCase()}</span>
+          <h2>{type === "Approvals" ? "Payments waiting for a decision." : "Live finance records."}</h2>
+        </div>
+        <button className="primary" onClick={onNewPayment}><Plus size={16}/> New payment</button>
+      </div>
+      <div className="card records-card">
+        <div className="records-head"><span>Supplier / Invoice</span><span>Amount</span><span>Status</span><span>Route</span></div>
+        {filtered.length ? filtered.map((p) => (
+          <div className="records-row" key={p.id}>
+            <span><b>{p.supplier || "Unknown supplier"}</b><small>{p.invoice_number || p.invoice_name || p.id}</small></span>
+            <span>{p.source_amount && p.source_currency ? new Intl.NumberFormat("en-GB", { style: "currency", currency: p.source_currency }).format(Number(p.source_amount)) : p.destination_amount || "—"}</span>
+            <span className="status-raw">{String(p.status || "unknown").replaceAll("_", " ")}</span>
+            <span>{p.route || "Route pending"}</span>
+          </div>
+        )) : <div className="empty-records">No records in this view yet.</div>}
+      </div>
+    </section>
+  );
+}
+
 function App() {
   const [active, setActive] = useState("Overview");
   const [flow, setFlow] = useState(false);
@@ -496,6 +621,7 @@ function App() {
         </header>
 
         <div className="content">
+          {active === "Overview" ? <>
           <section className="hero">
             <div>
               <span className="eyebrow">AUTONOMOUS FINANCE OPERATOR</span>
@@ -575,6 +701,11 @@ function App() {
           </section>
 
           <footer><Logo/><p>Autonomous cross-border finance for global businesses.</p><span>Colosseum build · Solana</span></footer>
+          </> : active === "Agent" ? (
+            <AgentWorkspace/>
+          ) : (
+            <RecordsWorkspace type={active} payments={livePayments} onNewPayment={() => setFlow(true)}/>
+          )}
         </div>
       </main>
       {flow && <PaymentFlow close={() => setFlow(false)} onComplete={refreshPayments}/>}
