@@ -25,9 +25,9 @@ export default async function handler(req, res) {
     const acknowledgements = body.acknowledgements || {};
     assertApprovalAllowed(payment, acknowledgements);
 
-    const amountUsdc = Number(body.amountUsdc || 1);
-    if (!Number.isFinite(amountUsdc) || amountUsdc <= 0) {
-      return res.status(400).json({ error: "amountUsdc must be a positive number" });
+    const amountUsdg = Number(body.amountUsdg || body.amountUsdc || 1);
+    if (!Number.isFinite(amountUsdg) || amountUsdg <= 0) {
+      return res.status(400).json({ error: "amountUsdg must be a positive number" });
     }
 
     const signed = signApproval({
@@ -39,7 +39,7 @@ export default async function handler(req, res) {
       sourceAmount: payment.source_amount,
       destinationAmount: payment.destination_amount,
       route: payment.route,
-      amountUsdc
+      amountUsdg
     });
 
     await transitionPayment(
@@ -49,7 +49,7 @@ export default async function handler(req, res) {
         approval: {
           expires_at: signed.payload.expiresAt,
           acknowledgements,
-          amount_usdc: amountUsdc,
+          amount_usdg: amountUsdg,
           mode: signed.mode
         }
       },
@@ -58,7 +58,7 @@ export default async function handler(req, res) {
         required_acknowledgements: requiredAcknowledgements(payment),
         provided_acknowledgements: acknowledgements,
         approval_expires_at: signed.payload.expiresAt,
-        amount_usdc: amountUsdc
+        amount_usdg: amountUsdg
       }
     );
 
