@@ -74,7 +74,7 @@ export default async function handler(req, res) {
     last_seen_at: b.last_seen_at
   }));
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.GROQ_API_KEY) {
     return res.status(200).json({
       answer: fallbackAnswer(message, payments),
       mode: "deterministic",
@@ -83,9 +83,12 @@ export default async function handler(req, res) {
   }
 
   try {
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const client = new OpenAI({
+      apiKey: process.env.GROQ_API_KEY,
+      baseURL: "https://api.groq.com/openai/v1"
+    });
     const response = await client.responses.create({
-      model: process.env.OPENAI_AGENT_MODEL || process.env.OPENAI_INVOICE_MODEL || "gpt-5.6-luna",
+      model: process.env.GROQ_AGENT_MODEL || "openai/gpt-oss-20b",
       input: [{
         role: "system",
         content: [{
@@ -113,7 +116,7 @@ Be concise and operational.`
 
     return res.status(200).json({
       answer: response.output_text || fallbackAnswer(message, payments),
-      mode: "ai",
+      mode: "groq",
       canExecute: false
     });
   } catch (error) {
