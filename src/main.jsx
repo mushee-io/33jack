@@ -30,10 +30,10 @@ import {
 import "./styles.css";
 
 const samplePayments = [
-  { company: "Austin Software Inc.", invoice: "US-33018", amount: "$6,250", route: "GBP → USDC → USD", status: "Settled", time: "12 min ago" },
-  { company: "Shenzhen Nova Parts", invoice: "CN-44018", amount: "¥42,000", route: "USD → USDC → CNY", status: "Review", time: "1 hr ago" },
-  { company: "Bengaluru Cloud Services", invoice: "IN-77104", amount: "₹405,000", route: "USD → USDC → INR", status: "Settled", time: "2 hrs ago" },
-  { company: "London Creative Systems", invoice: "GB-11820", amount: "£4,850", route: "USD → USDC → GBP", status: "Review", time: "Yesterday" },
+  { company: "Austin Software Inc.", invoice: "US-33018", amount: "$6,250", route: "GBP → USDG → USD", status: "Settled", time: "12 min ago" },
+  { company: "Shenzhen Nova Parts", invoice: "CN-44018", amount: "¥42,000", route: "USD → USDG → CNY", status: "Review", time: "1 hr ago" },
+  { company: "Bengaluru Cloud Services", invoice: "IN-77104", amount: "₹405,000", route: "USD → USDG → INR", status: "Settled", time: "2 hrs ago" },
+  { company: "London Creative Systems", invoice: "GB-11820", amount: "£4,850", route: "USD → USDG → GBP", status: "Review", time: "Yesterday" },
 ];
 
 const nav = [
@@ -50,7 +50,7 @@ const steps = [
   ["Risk checks", "Duplicate scan, beneficiary-change check and missing-field validation.", ShieldCheck],
   ["Route prepared", "Compared settlement options and prepared an exact payment proposal.", RefreshCw],
   ["Approval", "Human approval is bound to amount, beneficiary, route and expiry.", BadgeCheck],
-  ["Settlement", "USDC settles on Solana, then the local payout partner completes delivery.", Zap],
+  ["Settlement", "USDG settles on Solana, then the local payout partner completes delivery.", Zap],
   ["Reconciliation", "Payment evidence is matched back to the invoice automatically.", FileCheck2],
 ];
 
@@ -117,7 +117,7 @@ function PaymentFlow({ close, onComplete }) {
         funding: demo.funding,
         fee: "Calculated at quote",
         eta: demo.eta,
-        route: `${demo.source} → USDC/Solana → ${corridor}`,
+        route: `${demo.source} → USDG/Solana → ${corridor}`,
         risk: { duplicate: false, beneficiary_changed: false, suspicious: false, missing_fields: [] }
       };
     }
@@ -133,7 +133,7 @@ function PaymentFlow({ close, onComplete }) {
       eta: analysis.route_options?.best?.etaMinutes
         ? `${analysis.route_options.best.etaMinutes} min est.`
         : corridor === "CNY" ? "Same business day" : "< 10 minutes",
-      route: analysis.recommended_route || `${analysis.source_currency || "GBP"} → USDC/Solana → ${analysis.destination_currency || corridor}`,
+      route: analysis.recommended_route || `${analysis.source_currency || "GBP"} → USDG/Solana → ${analysis.destination_currency || corridor}`,
       risk: analysis.risk || {}
     };
   }, [analysis, corridor]);
@@ -211,7 +211,7 @@ Please settle this approved supplier invoice.`;
         body: JSON.stringify({
           paymentId,
           acknowledgements,
-          amountUsdc: 1
+          amountUsdg: 1
         })
       });
       const approval = await readApiResponse(approvalResponse);
@@ -325,12 +325,12 @@ Please settle this approved supplier invoice.`;
               <div className="proposal-amount">{result.amount}</div>
               <div className="proposal-lines">
                 <p><span>You fund</span><b>{result.funding}</b></p>
-                <p><span>Settlement</span><b>Solana · USDC</b></p>
+                <p><span>Settlement</span><b>Solana · USDG</b></p>
                 <p><span>Service + FX</span><b>{result.fee}</b></p>
                 <p><span>Delivery target</span><b>{result.eta}</b></p>
               </div>
               <div className="route">
-                <span>{analysis?.source_currency || "GBP"}</span><ArrowRight/><span>USDC</span><ArrowRight/><span>{analysis?.destination_currency || corridor}</span>
+                <span>{analysis?.source_currency || "GBP"}</span><ArrowRight/><span>USDG</span><ArrowRight/><span>{analysis?.destination_currency || corridor}</span>
               </div>
               {duplicateKnown && (
                 <label className="ack">
@@ -374,7 +374,7 @@ Please settle this approved supplier invoice.`;
               >
                 <ShieldCheck size={17}/> Approve exact payment
               </button>
-              <small className="fine">Devnet-ready: real USDC moves only when the server devnet signer, mint and recipient are configured.</small>
+              <small className="fine">Devnet-ready: real USDG moves only when the server devnet signer, mint and recipient are configured.</small>
             </div>
           </div>
         )}
@@ -385,7 +385,7 @@ Please settle this approved supplier invoice.`;
             <h3>Executing approved payment</h3>
             {[
               "Approval locked",
-              "USDC settlement submitted on Solana",
+              "USDG settlement submitted on Solana",
               "Settlement response confirmed",
               "Invoice reconciled"
             ].map((s, i) => (
@@ -442,7 +442,7 @@ function ChannelPreview() {
           </div>
           <div className="bubble bot compact">
             <b>Payment proposal</b>
-            <p>£4,850 → USDC/Solana → ¥42,000</p>
+            <p>£4,850 → USDG/Solana → ¥42,000</p>
             <small>Estimated delivery: same business day</small>
           </div>
           <button className="chat-cta">Review securely <ChevronRight size={15}/></button>
@@ -664,7 +664,7 @@ function App() {
             <div className="hero-orbit">
               <div className="orbit-core"><span>33</span><small>AI OPERATOR</small></div>
               <div className="orbit-label a">INVOICE</div>
-              <div className="orbit-label b">USDC</div>
+              <div className="orbit-label b">USDG</div>
               <div className="orbit-label c">SOLANA</div>
               <div className="orbit-label d">LOCAL PAYOUT</div>
             </div>
@@ -719,7 +719,7 @@ function App() {
               <h2>The customer asks for an outcome.<br/>33jack handles the plumbing.</h2>
             </div>
             <div className="rails">
-              <div><span className="sol-symbol">S</span><b>Solana</b><small>USDC settlement</small></div>
+              <div><span className="sol-symbol">S</span><b>Solana</b><small>USDG settlement</small></div>
               <ArrowRight/>
               <div><Banknote/><b>Banks</b><small>Local payouts</small></div>
               <ArrowRight/>
