@@ -20,7 +20,7 @@ export function signApproval(input) {
     sourceAmount: input.sourceAmount == null ? null : Number(input.sourceAmount),
     destinationAmount: String(input.destinationAmount || ""),
     route: String(input.route || ""),
-    amountUsdc: Number(input.amountUsdc || 1),
+    amountUsdg: Number(input.amountUsdg || 1),
     expiresAt: Date.now() + Math.min(Number(input.expiresInMs || 300000), 900000)
   };
   const body = encode(payload);
