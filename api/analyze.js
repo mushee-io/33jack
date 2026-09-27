@@ -123,7 +123,7 @@ export default async function handler(req, res) {
   const hash = invoiceHash(fileData);
   const exactDuplicate = await findPaymentByInvoiceHash(hash);
 
-  if (!process.env.OPENAI_API_KEY) {
+  if (!process.env.GROQ_API_KEY) {
     const base = fallback(fileName, corridor);
     const history = await getBeneficiaryHistory(base.supplier, corridor);
     const changed = beneficiaryChanged(history, base.beneficiary);
@@ -167,12 +167,15 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       ...result,
-      notice: "OPENAI_API_KEY is not configured; deterministic demo analysis returned."
+      notice: "GROQ_API_KEY is not configured; deterministic demo analysis returned."
     });
   }
 
   try {
-    const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const client = new OpenAI({
+      apiKey: process.env.GROQ_API_KEY,
+      baseURL: "https://api.groq.com/openai/v1"
+    });
     const type = String(mimeType || "");
     const isImage = type.startsWith("image/");
     const isPdf = type === "application/pdf" || fileName.toLowerCase().endsWith(".pdf");
@@ -215,14 +218,22 @@ Privacy rule: never return a full bank-account number. If an account number is p
 Do not claim duplicate detection or beneficiary-history verification; 33jack performs those checks deterministically after extraction.`;
 
     const response = await client.responses.create({
-      model: process.env.OPENAI_INVOICE_MODEL || "gpt-5.6-luna",
-      input: [{
-        role: "user",
-        content: [
-          source,
-          { type: "input_text", text: prompt }
-        ]
-      }]
+      model: isImage
+        ? (process.env.GROQ_VISION_MODEL || "qwen/qwen3.8-27b")
+        : (process.env.GROQ_AGENT_MODEL || "openai/gpt-oss-20b"),
+      input: isImage
+        ? [{
+            role: "user",
+            content: [
+              { type: "input_text", text: prompt },
+              {
+                type: "input_image",
+                image_url: `data:${mimeType};base64,${fileData}`,
+                detail: "auto"
+              }
+            ]
+          }]
+        : `${prompt}\n\nInvoice text:\n${decodedText}`
     });
 
     const parsed = extractJson(response.output_text);
@@ -275,7 +286,7 @@ Do not claim duplicate detection or beneficiary-history verification; 33jack per
         `${parsed.source_currency || "GBP"} → USDC/Solana → ${parsed.destination_currency || corridor}`,
       route_options: routing,
       quote_mode: routing.mode,
-      mode: "ai"
+      mode: "groq"
     };
 
     const saved = await savePayment({
@@ -285,7 +296,7 @@ Do not claim duplicate detection or beneficiary-history verification; 33jack per
     });
 
     await addAuditEvent(saved.id, "invoice_analyzed", "33jack-agent", {
-      mode: "ai",
+      mode: "groq",
       invoice_hash: hash,
       confidence: parsed.confidence ?? null,
       duplicate,
