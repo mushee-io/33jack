@@ -82,6 +82,39 @@ function extractJson(text) {
   return JSON.parse(cleaned);
 }
 
+async function extractPdfText(fileData) {
+  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const bytes = Uint8Array.from(Buffer.from(String(fileData || ""), "base64"));
+  const task = getDocument({
+    data: bytes,
+    useWorkerFetch: false,
+    isEvalSupported: false,
+    useSystemFonts: true
+  });
+  const pdf = await task.promise;
+  const pages = [];
+  const maxPages = Math.min(pdf.numPages, 12);
+
+  for (let pageNumber = 1; pageNumber <= maxPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const textContent = await page.getTextContent();
+    const text = textContent.items
+      .map((item) => ("str" in item ? item.str : ""))
+      .filter(Boolean)
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (text) pages.push(`[Page ${pageNumber}] ${text}`);
+  }
+
+  return {
+    text: pages.join("\n"),
+    pageCount: pdf.numPages,
+    extractedPages: maxPages
+  };
+}
+
 function invoiceHash(fileData) {
   return crypto
     .createHash("sha256")
@@ -241,7 +274,7 @@ Do not claim duplicate detection or beneficiary-history verification; 33jack per
               }
             ]
           }]
-        : `${prompt}\n\nInvoice text:\n${decodedText}`
+        : `${prompt}\n\nInvoice source: ${isPdf ? "PDF" : "text"}\n${pdfMeta ? `PDF pages: ${pdfMeta.pageCount}; extracted pages: ${pdfMeta.extractedPages}\n` : ""}\nInvoice text:\n${decodedText}`
     });
 
     const parsed = extractJson(response.output_text);
