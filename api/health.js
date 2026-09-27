@@ -1,6 +1,6 @@
 export default async function handler(req, res) {
   const checks = {
-    ai: Boolean(process.env.OPENAI_API_KEY),
+    ai: Boolean(process.env.GROQ_API_KEY),
     database: Boolean(process.env.DATABASE_URL),
     secureApprovals: Boolean(process.env.APPROVAL_HMAC_SECRET),
     devnetSigner: Boolean(process.env.SOLANA_DEVNET_PAYER_SECRET_KEY),
@@ -20,6 +20,7 @@ export default async function handler(req, res) {
   return res.status(200).json({
     ok: true,
     service: "33jack",
+    aiProvider: process.env.GROQ_API_KEY ? "groq" : "none",
     environment: process.env.VERCEL_ENV || process.env.NODE_ENV || "local",
     network: "solana-devnet",
     mode: coreReady && devnetReady ? "integrated-devnet" : "development",
