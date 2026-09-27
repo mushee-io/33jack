@@ -190,9 +190,11 @@ export default async function handler(req, res) {
       Transaction
     } = web3;
     const {
+      TOKEN_2022_PROGRAM_ID,
       createAssociatedTokenAccountIdempotentInstruction,
       createTransferCheckedInstruction,
-      getAssociatedTokenAddress
+      getAssociatedTokenAddress,
+      getMint
     } = splToken;
 
     const raw = JSON.parse(process.env.SOLANA_DEVNET_PAYER_SECRET_KEY);
@@ -227,14 +229,15 @@ export default async function handler(req, res) {
 
     const mintString =
       process.env.SOLANA_DEVNET_USDG_MINT ||
-      "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
+      "4F6PM96JJxngmHnZLBh9n58RH4aTVNWvDs2nuwrT5BP7";
     const fallbackRecipient = process.env.SOLANA_SETTLEMENT_RECEIVER;
     const destination = recipient || fallbackRecipient;
 
     const mint = new PublicKey(mintString);
     const receiver = new PublicKey(destination);
-    const senderAta = await getAssociatedTokenAddress(mint, signer.publicKey);
-    const receiverAta = await getAssociatedTokenAddress(mint, receiver);
+    const mintInfo = await getMint(connection, mint, "confirmed", TOKEN_2022_PROGRAM_ID);
+    const senderAta = await getAssociatedTokenAddress(mint, signer.publicKey, false, TOKEN_2022_PROGRAM_ID);
+    const receiverAta = await getAssociatedTokenAddress(mint, receiver, false, TOKEN_2022_PROGRAM_ID);
     const latest = await connection.getLatestBlockhash("confirmed");
 
     const tx = new Transaction().add(
