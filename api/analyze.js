@@ -220,11 +220,23 @@ export default async function handler(req, res) {
     const type = String(mimeType || inferredType);
     const isImage = type.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(fileName);
     const isPdf = type === "application/pdf" || lowerName.endsWith(".pdf");
-    const source = isImage
-      ? { type: "input_image", image_url: `data:${mimeType};base64,${fileData}`, detail: "high" }
-      : isPdf
-        ? { type: "input_file", filename: fileName, file_data: `data:${mimeType || "application/pdf"};base64,${fileData}`, detail: "high" }
-        : { type: "input_file", filename: fileName, file_data: `data:${mimeType || "text/plain"};base64,${fileData}` };
+
+    let decodedText = null;
+    let pdfMeta = null;
+
+    if (isPdf) {
+      pdfMeta = await extractPdfText(fileData);
+      decodedText = pdfMeta.text;
+
+      if (!decodedText || decodedText.trim().length < 20) {
+        return res.status(422).json({
+          error: "This PDF appears to be scanned or image-only",
+          detail: "Text-based PDFs are supported. For scanned PDFs, upload the page as PNG, JPG, or WEBP for Groq vision analysis."
+        });
+      }
+    } else if (!isImage) {
+      decodedText = Buffer.from(String(fileData || ""), "base64").toString("utf8");
+    }
 
     const prompt = `You are 33jack's invoice-risk analyst.
 Extract the commercial payment instruction from this invoice and return ONLY valid JSON.
