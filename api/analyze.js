@@ -83,7 +83,9 @@ function extractJson(text) {
 }
 
 async function extractPdfText(fileData) {
-  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.js");
+  const getDocument = pdfjs.getDocument || pdfjs.default?.getDocument;
+  if (!getDocument) throw new Error("PDF parser failed to load");
   const bytes = Uint8Array.from(Buffer.from(String(fileData || ""), "base64"));
   const task = getDocument({
     data: bytes,
