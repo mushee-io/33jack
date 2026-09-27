@@ -176,9 +176,17 @@ export default async function handler(req, res) {
       apiKey: process.env.GROQ_API_KEY,
       baseURL: "https://api.groq.com/openai/v1"
     });
-    const type = String(mimeType || "");
-    const isImage = type.startsWith("image/");
-    const isPdf = type === "application/pdf" || fileName.toLowerCase().endsWith(".pdf");
+    const lowerName = fileName.toLowerCase();
+    const inferredType =
+      lowerName.endsWith(".webp") ? "image/webp" :
+      lowerName.endsWith(".png") ? "image/png" :
+      lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg") ? "image/jpeg" :
+      lowerName.endsWith(".pdf") ? "application/pdf" :
+      lowerName.endsWith(".txt") ? "text/plain" :
+      "";
+    const type = String(mimeType || inferredType);
+    const isImage = type.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(fileName);
+    const isPdf = type === "application/pdf" || lowerName.endsWith(".pdf");
     const source = isImage
       ? { type: "input_image", image_url: `data:${mimeType};base64,${fileData}`, detail: "high" }
       : isPdf
@@ -228,7 +236,7 @@ Do not claim duplicate detection or beneficiary-history verification; 33jack per
               { type: "input_text", text: prompt },
               {
                 type: "input_image",
-                image_url: `data:${mimeType};base64,${fileData}`,
+                image_url: `data:${type};base64,${fileData}`,
                 detail: "auto"
               }
             ]
