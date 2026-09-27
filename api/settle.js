@@ -245,15 +245,18 @@ export default async function handler(req, res) {
         signer.publicKey,
         receiverAta,
         receiver,
-        mint
+        mint,
+        TOKEN_2022_PROGRAM_ID
       ),
       createTransferCheckedInstruction(
         senderAta,
         mint,
         receiverAta,
         signer.publicKey,
-        Math.round(amountUsdg * 1_000_000),
-        6
+        BigInt(Math.round(amountUsdg * (10 ** mintInfo.decimals))),
+        mintInfo.decimals,
+        [],
+        TOKEN_2022_PROGRAM_ID
       )
     );
 
