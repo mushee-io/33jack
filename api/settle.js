@@ -135,9 +135,9 @@ export default async function handler(req, res) {
 
       assertApprovalMatches(payment, approved);
 
-      const amountUsdc = Number(approved.amountUsdc || 1);
-      if (!Number.isFinite(amountUsdc) || amountUsdc <= 0) {
-        return res.status(400).json({ error: "Approved USDC amount is invalid" });
+      const amountUsdg = Number(approved.amountUsdg || 1);
+      if (!Number.isFinite(amountUsdg) || amountUsdg <= 0) {
+        return res.status(400).json({ error: "Approved USDG amount is invalid" });
       }
 
       const simulated = "demo_" + Math.random().toString(36).slice(2, 12);
@@ -147,7 +147,7 @@ export default async function handler(req, res) {
         PAYMENT_STATUS.SETTLING,
         { settlement_signature: simulated },
         "settlement-engine",
-        { mode: "demo", amount_usdc: amountUsdc }
+        { mode: "demo", amount_usdg: amountUsdg }
       );
 
       await transitionPayment(
@@ -213,20 +213,20 @@ export default async function handler(req, res) {
 
     assertApprovalMatches(payment, approved);
 
-    const amountUsdc = Number(approved.amountUsdc || 1);
-    if (!Number.isFinite(amountUsdc) || amountUsdc <= 0) {
-      return res.status(400).json({ error: "Approved USDC amount is invalid" });
+    const amountUsdg = Number(approved.amountUsdg || 1);
+    if (!Number.isFinite(amountUsdg) || amountUsdg <= 0) {
+      return res.status(400).json({ error: "Approved USDG amount is invalid" });
     }
 
-    const max = Number(process.env.MAX_DEVNET_USDC_PER_PAYMENT || 5);
-    if (amountUsdc > max) {
+    const max = Number(process.env.MAX_DEVNET_USDG_PER_PAYMENT || 5);
+    if (amountUsdg > max) {
       return res.status(400).json({
-        error: `Approved amount exceeds Devnet safety limit of ${max} USDC`
+        error: `Approved amount exceeds Devnet safety limit of ${max} USDG`
       });
     }
 
     const mintString =
-      process.env.SOLANA_DEVNET_USDC_MINT ||
+      process.env.SOLANA_DEVNET_USDG_MINT ||
       "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
     const fallbackRecipient = process.env.SOLANA_SETTLEMENT_RECEIVER;
     const destination = recipient || fallbackRecipient;
@@ -249,7 +249,7 @@ export default async function handler(req, res) {
         mint,
         receiverAta,
         signer.publicKey,
-        Math.round(amountUsdc * 1_000_000),
+        Math.round(amountUsdg * 1_000_000),
         6
       )
     );
@@ -268,7 +268,7 @@ export default async function handler(req, res) {
       "settlement-engine",
       {
         mode: "devnet",
-        amount_usdc: amountUsdc,
+        amount_usdg: amountUsdg,
         signature: precomputedSignature,
         mint: mint.toBase58(),
         recipient: receiver.toBase58()
