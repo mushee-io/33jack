@@ -265,10 +265,10 @@ Please settle this approved supplier invoice.`;
             <label className="dropzone">
               <UploadCloud size={28} />
               <strong>{fileName || "Drop invoice here"}</strong>
-              <span>PNG, JPG, WEBP or TXT · up to 3.2 MB · Groq live analysis</span>
+              <span>PDF, PNG, JPG, WEBP or TXT · up to 3.2 MB · Groq live analysis</span>
               <input
                 type="file"
-                accept=".png,.jpg,.jpeg,.webp,.txt,image/png,image/jpeg,image/webp,text/plain"
+                accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,application/pdf,image/png,image/jpeg,image/webp,text/plain"
                 onChange={(e) => {
                   const selected = e.target.files?.[0] || null;
                   setFile(selected);
