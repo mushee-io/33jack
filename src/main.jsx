@@ -265,10 +265,10 @@ Please settle this approved supplier invoice.`;
             <label className="dropzone">
               <UploadCloud size={28} />
               <strong>{fileName || "Drop invoice here"}</strong>
-              <span>PDF, PNG, JPG or TXT · up to 3.2 MB · or run the built-in demo</span>
+              <span>PNG, JPG or TXT · up to 3.2 MB · Groq live analysis</span>
               <input
                 type="file"
-                accept=".pdf,.png,.jpg,.jpeg,.txt,application/pdf,image/png,image/jpeg,text/plain"
+                accept=".png,.jpg,.jpeg,.txt,image/png,image/jpeg,text/plain"
                 onChange={(e) => {
                   const selected = e.target.files?.[0] || null;
                   setFile(selected);
@@ -298,7 +298,7 @@ Please settle this approved supplier invoice.`;
         {stage === "review" && (
           <div className="review-grid">
             <div className="analysis-card">
-              <span className="eyebrow">{analysis?.mode === "ai" ? "LIVE AI RISK REVIEW" : "DEMO RISK REVIEW"}</span>
+              <span className="eyebrow">{analysis?.mode === "groq" ? "LIVE GROQ RISK REVIEW" : "DEMO RISK REVIEW"}</span>
               <h3>{fileName || analysis?.invoice_name || "invoice"}</h3>
               <div className="check-list">
                 <div className={duplicateKnown ? "warning" : ""}>
