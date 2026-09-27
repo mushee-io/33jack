@@ -20,7 +20,7 @@
     "typescript": "^5.7.2",
     "vite": "^6.0.7",
     "bs58": "^6.0.0",
-    "pdfjs-dist": "^6.3.289"
+    "pdfjs-dist": "3.11.174"
   },
   "devDependencies": {}
 }
