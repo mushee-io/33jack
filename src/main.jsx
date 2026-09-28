@@ -121,6 +121,58 @@ async function readApiResponse(response) {
   }
 }
 
+const STABLECOINS = new Set(["USDG", "USDC", "USDT"]);
+
+function formatMoney(value, currency) {
+  const amount = Number(value);
+  const code = String(currency || "").trim().toUpperCase();
+  if (!Number.isFinite(amount)) return value == null ? "—" : String(value);
+  if (!code) return amount.toLocaleString("en-GB", { maximumFractionDigits: 2 });
+  if (STABLECOINS.has(code)) {
+    return `${amount.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 6 })} ${code}`;
+  }
+  try {
+    return new Intl.NumberFormat("en-GB", {
+      style: "currency",
+      currency: code,
+      maximumFractionDigits: 2
+    }).format(amount);
+  } catch {
+    return `${amount.toLocaleString("en-GB", { maximumFractionDigits: 2 })} ${code}`;
+  }
+}
+
+class AppErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, info) {
+    console.error("33jack UI render error", error, info);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{minHeight:"100vh",display:"grid",placeItems:"center",background:"#070b10",color:"#eef2f7",padding:24}}>
+          <div style={{maxWidth:620,border:"1px solid #263246",background:"#0d141d",borderRadius:16,padding:28}}>
+            <span className="eyebrow">33JACK RECOVERY</span>
+            <h2 style={{margin:"8px 0"}}>The payment view hit a display error.</h2>
+            <p style={{color:"#8491a3",fontSize:11,lineHeight:1.6}}>Your stored payment data is still intact. Reload the interface to continue.</p>
+            <button className="primary" onClick={() => window.location.reload()}>Reload 33Jack</button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function PaymentFlow({ close, onComplete }) {
   const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState("");
@@ -158,7 +210,7 @@ function PaymentFlow({ close, onComplete }) {
       supplier: analysis.supplier || "Supplier not extracted",
       amount: analysis.destination_amount || "Quoted at execution",
       funding: analysis.source_amount && analysis.source_currency
-        ? new Intl.NumberFormat("en-GB", { style: "currency", currency: analysis.source_currency }).format(analysis.source_amount)
+        ? formatMoney(analysis.source_amount, analysis.source_currency)
         : "Confirm from invoice",
       fee: analysis.route_options?.best?.estimatedFee != null
         ? `£${Number(analysis.route_options.best.estimatedFee).toFixed(2)} est.`
@@ -963,7 +1015,7 @@ function RecordsWorkspace({ type, payments, onNewPayment }) {
         {filtered.length ? filtered.map((p) => (
           <div className="records-row" key={p.id}>
             <span><b>{p.supplier || "Unknown supplier"}</b><small>{p.invoice_number || p.invoice_name || p.id}</small></span>
-            <span>{p.source_amount && p.source_currency ? new Intl.NumberFormat("en-GB", { style: "currency", currency: p.source_currency }).format(Number(p.source_amount)) : p.destination_amount || "—"}</span>
+            <span>{p.source_amount && p.source_currency ? formatMoney(p.source_amount, p.source_currency) : p.destination_amount || "—"}</span>
             <span className="status-raw">{String(p.status || "unknown").replaceAll("_", " ")}</span>
             <span>{p.route || "Route pending"}</span>
           </div>
@@ -1000,7 +1052,7 @@ function App() {
         company: p.supplier || "Unknown supplier",
         invoice: p.invoice_number || p.invoice_name || p.id,
         amount: p.source_amount && p.source_currency
-          ? new Intl.NumberFormat("en-GB", { style: "currency", currency: p.source_currency }).format(Number(p.source_amount))
+          ? formatMoney(p.source_amount, p.source_currency)
           : p.destination_amount || "—",
         route: p.route || "Route pending",
         status:
@@ -1146,4 +1198,4 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")).render(<App/>);
+createRoot(document.getElementById("root")).render(<AppErrorBoundary><App/></AppErrorBoundary>);
