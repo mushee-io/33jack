@@ -721,7 +721,7 @@ function PayWorkspace() {
         <form className="card pay-form" onSubmit={requestQuote}>
           <div className="pay-form-head">
             <div><span className="eyebrow">PAYOUT INSTRUCTION</span><h3>Prepare vendor payout</h3></div>
-            <span className="sandbox-badge">SANDBOX LIVE</span>
+            <span className="sandbox-badge">PROVIDER READY</span>
           </div>
 
           <div className="form-split">
@@ -779,7 +779,7 @@ function PayWorkspace() {
           ) : receipt ? (
             <div className="pay-receipt">
               <div className="done-icon"><Check size={30}/></div>
-              <span className="eyebrow">PAYOUT RECONCILED</span>
+              <span className="eyebrow">{receipt.reconciled ? "PAYOUT RECONCILED" : "PAYOUT SUBMITTED"}</span>
               <h3>{receipt.status}</h3>
               <div className="receipt">
                 <div><span>Receipt</span><b>{receipt.id}</b></div>
@@ -787,7 +787,8 @@ function PayWorkspace() {
                 <div><span>Delivered</span><b>{receipt.delivered}</b></div>
                 <div><span>Beneficiary</span><b>{receipt.beneficiary}</b></div>
                 <div><span>Bank</span><b>{receipt.bank || form.bankName}</b></div>
-                <div><span>Status</span><b className="green">{receipt.reconciled ? "Matched ✓" : "Processing"}</b></div>
+                <div><span>Status</span><b className="green">{receipt.reconciled ? "Matched ✓" : (receipt.provider_status || "Provider tracking")}</b></div>
+                {receipt.provider && <div><span>Provider</span><b>{receipt.provider}</b></div>}
               </div>
               <p className="sandbox-note">This receipt proves the 33Jack approval → payout adapter → reconciliation workflow. No real fiat was transmitted.</p>
             </div>
@@ -806,6 +807,7 @@ function PayWorkspace() {
                 <p><span>Reference FX</span><b>1 USD = {exchangeRate} {quote.destination_currency}</b></p>
                 <p><span>Service + FX</span><b>{feeAmount.toFixed(2)} {quote.funding_asset}</b></p>
                 <p><span>Delivery target</span><b>{q?.eta || "same business day"}</b></p>
+                <p><span>Provider</span><b>{q?.partner || "33Jack Sandbox Payout Rail"}</b></p>
                 <p><span>Bank</span><b>{quote.beneficiary?.bank_name} · ••••{quote.beneficiary?.account_last4}</b></p>
                 <p><span>Invoice</span><b>{quote.invoice_ref || "No reference"}</b></p>
               </div>
