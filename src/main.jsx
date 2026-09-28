@@ -300,7 +300,14 @@ Please settle this approved supplier invoice.`;
         })
       });
       const approval = await readApiResponse(approvalResponse);
-      if (!approvalResponse.ok) throw new Error(approval.detail || approval.error || "Approval failed");
+      if (!approvalResponse.ok) {
+        if (approvalResponse.status === 409 && approval.refreshedPayout) {
+          setQuote(approval.refreshedPayout);
+          setError("Quote refreshed automatically. Review the updated amount and approve again.");
+          return;
+        }
+        throw new Error(approval.detail || approval.error || "Approval failed");
+      }
 
       setSettleStep(2);
       const response = await fetch("/api/settle", {
@@ -780,7 +787,7 @@ function PayWorkspace() {
             <>
               <div className="pay-form-head">
                 <div><span className="eyebrow">EXACT PAYOUT QUOTE</span><h3>{quote.beneficiary?.name}</h3></div>
-                <span className="sandbox-badge">5 MIN QUOTE</span>
+                <span className="sandbox-badge">15 MIN QUOTE</span>
               </div>
               <div className="pay-big-amount">
                 <small>Vendor receives</small>
