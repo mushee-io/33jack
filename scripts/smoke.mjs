@@ -3,11 +3,11 @@ import analyze from "../api/analyze.js";
 import approve from "../api/approve.js";
 import settle from "../api/settle.js";
 import paymentDetail from "../api/payment.js";
+import payments from "../api/payments.js";
 import health from "../api/health.js";
 import payoutQuote from "../api/payout-quote.js";
 import payoutApprove from "../api/payout-approve.js";
 import payoutSettle from "../api/payout-settle.js";
-import payouts from "../api/payouts.js";
 
 function invoke(handler, method = "GET", body = undefined, query = undefined) {
   return new Promise((resolve, reject) => {
@@ -135,7 +135,7 @@ assert.equal(fiatSettlement.data.payout.status, "paid_sandbox");
 assert.ok(fiatSettlement.data.receipt.id.startsWith("33J-FIAT-"));
 assert.equal(fiatSettlement.data.receipt.reconciled, true);
 
-const payoutList = await invoke(payouts, "GET", undefined, { limit: 10 });
+const payoutList = await invoke(payments, "GET", undefined, { kind: "payouts", limit: 10 });
 assert.equal(payoutList.status, 200);
 assert.ok(payoutList.data.payouts.some((p) => p.id === fiatQuote.data.payout.id));
 
