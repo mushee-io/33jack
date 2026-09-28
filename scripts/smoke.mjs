@@ -243,6 +243,44 @@ assert.equal(wiseTransfer.transferId, "16521632");
 assert.equal(wiseTransfer.providerStatus, "incoming_payment_waiting");
 assert.equal(wiseTransfer.funded, false);
 
+const externalQuoteResponse = await invoke(payoutQuote, "POST", {
+  fundingAsset: "USDG",
+  fundingAmount: 1000,
+  destinationCurrency: "CNY",
+  invoiceRef: "WISE-CI-E2E-1",
+  beneficiary: {
+    name: "Wise CI Supplier",
+    bank_name: "Wise CI Bank",
+    account_last4: "5678",
+    country: "China"
+  }
+});
+assert.equal(externalQuoteResponse.status, 200);
+assert.equal(externalQuoteResponse.data.payout.quote.provider, "wise_sandbox");
+assert.equal(
+  externalQuoteResponse.data.payout.quote.providerQuoteId,
+  "8fa9be20-ba43-4b15-abbb-9424e1481050"
+);
+
+const externalApprovalResponse = await invoke(payoutApprove, "POST", {
+  payoutId: externalQuoteResponse.data.payout.id
+});
+assert.equal(externalApprovalResponse.status, 200);
+assert.ok(externalApprovalResponse.data.approvalToken);
+
+const externalSettlementResponse = await invoke(payoutSettle, "POST", {
+  approvalToken: externalApprovalResponse.data.approvalToken
+});
+assert.equal(externalSettlementResponse.status, 200);
+assert.equal(externalSettlementResponse.data.payout.status, "external_created");
+assert.equal(externalSettlementResponse.data.receipt.id, "WISE-16521632");
+assert.equal(externalSettlementResponse.data.receipt.provider, "Wise Sandbox");
+assert.equal(
+  externalSettlementResponse.data.receipt.provider_status,
+  "incoming_payment_waiting"
+);
+assert.equal(externalSettlementResponse.data.receipt.reconciled, false);
+
 globalThis.fetch = originalFetch;
 process.env.PAYOUT_PROVIDER = "internal_sandbox";
 delete process.env.WISE_SANDBOX_TOKEN;
