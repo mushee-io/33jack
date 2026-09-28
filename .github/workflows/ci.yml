@@ -20,6 +20,8 @@ jobs:
         run: npm install
       - name: Check serverless syntax
         run: find api -name '*.js' -print0 | xargs -0 -n1 node --check
+      - name: Check Solana runtime import
+        run: node -e "import('@solana/web3.js').then(() => console.log('solana web3 import ok'))"
       - name: Smoke backend flow
         run: npm run test:smoke
       - name: Build frontend
