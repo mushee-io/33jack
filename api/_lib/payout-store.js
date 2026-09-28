@@ -5,6 +5,20 @@ let ready = false;
 
 const memory = globalThis.__33jackPayoutStore || (globalThis.__33jackPayoutStore = []);
 
+function parseJson(value) {
+  if (typeof value !== "string") return value;
+  try { return JSON.parse(value); } catch { return value; }
+}
+
+function normalizePayout(row) {
+  if (!row) return row;
+  return {
+    ...row,
+    quote: parseJson(row.quote),
+    beneficiary: parseJson(row.beneficiary)
+  };
+}
+
 function db() {
   if (!process.env.DATABASE_URL) {
     const isProduction =
@@ -55,11 +69,11 @@ export async function savePayout(payout) {
     const idx = memory.findIndex((x) => x.id === payout.id);
     if (idx >= 0) {
       memory[idx] = { ...memory[idx], ...payout, updated_at: new Date().toISOString() };
-      return memory[idx];
+      return normalizePayout(memory[idx]);
     }
     const row = { ...payout, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
     memory.unshift(row);
-    return row;
+    return normalizePayout(row);
   }
   await ensurePayoutSchema();
   const [row] = await client`
@@ -90,16 +104,16 @@ export async function savePayout(payout) {
       updated_at = now()
     returning *
   `;
-  return row;
+  return normalizePayout(row);
 }
 
 export async function getPayout(id) {
   if (!id) return null;
   const client = db();
-  if (!client) return memory.find((x) => x.id === id) || null;
+  if (!client) return normalizePayout(memory.find((x) => x.id === id) || null);
   await ensurePayoutSchema();
   const rows = await client`select * from jack_payouts where id = ${String(id)} limit 1`;
-  return rows[0] || null;
+  return normalizePayout(rows[0] || null);
 }
 
 export async function listPayouts(limit = 25) {
@@ -120,11 +134,11 @@ export async function listPayouts(limit = 25) {
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
-    }).slice(0, limit);
+    }).slice(0, limit).map(normalizePayout);
   }
 
   await ensurePayoutSchema();
-  return client`
+  const rows = await client`
     select *
     from (
       select distinct on (coalesce(invoice_ref, id)) *
@@ -142,4 +156,5 @@ export async function listPayouts(limit = 25) {
     order by updated_at desc
     limit ${limit}
   `;
+  return rows.map(normalizePayout);
 }
