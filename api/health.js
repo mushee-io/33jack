@@ -11,6 +11,8 @@ export default async function handler(req, res) {
     routeQuotes: Boolean(process.env.ROUTE_QUOTES_JSON),
     externalPayoutQuotes: payoutProvider.wiseQuoteReady,
     externalPayoutTransfer: payoutProvider.wiseTransferReady,
+    externalPayoutBalanceConfigured: payoutProvider.wiseBalanceConfigured,
+    externalPayoutAutoFunding: payoutProvider.wiseAutoFundingEnabled,
     externalPayoutFunding: payoutProvider.wiseFundingReady
   };
 
