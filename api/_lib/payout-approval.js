@@ -21,6 +21,8 @@ export function signPayoutApproval(payout) {
     destinationAmount: Number(payout.destination_amount),
     exchangeRate: Number(payout.exchange_rate),
     feeAmount: Number(payout.fee_amount),
+    provider: payout.quote?.provider || "internal_sandbox",
+    providerQuoteId: payout.quote?.providerQuoteId || null,
     beneficiary: payout.beneficiary,
     quoteExpiresAt: Number(payout.quote?.expiresAt || 0),
     expiresAt: Date.now() + 15 * 60 * 1000
