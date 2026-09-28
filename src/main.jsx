@@ -755,7 +755,7 @@ function PayWorkspace() {
           </div>
 
           <button className="primary wide" disabled={busy}>
-            <RefreshCw size={16}/>{busy ? " Preparing…" : " Get payout quote"}
+            <RefreshCw size={16}/>{busy ? " Preparing…" : " Get / refresh quote"}
           </button>
           <small className="fine">Sandbox only: this stage does not convert stablecoins or transmit fiat through a bank.</small>
         </form>
