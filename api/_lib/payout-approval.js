@@ -23,7 +23,7 @@ export function signPayoutApproval(payout) {
     feeAmount: Number(payout.fee_amount),
     beneficiary: payout.beneficiary,
     quoteExpiresAt: Number(payout.quote?.expiresAt || 0),
-    expiresAt: Date.now() + 5 * 60 * 1000
+    expiresAt: Date.now() + 15 * 60 * 1000
   };
   const body = encode(payload);
   const signature = crypto.createHmac("sha256", secret()).update(body).digest("base64url");
@@ -39,6 +39,5 @@ export function verifyPayoutApproval(token) {
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) throw new Error("Invalid payout approval signature");
   const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
   if (Date.now() > Number(payload.expiresAt || 0)) throw new Error("Payout approval expired");
-  if (Date.now() > Number(payload.quoteExpiresAt || 0)) throw new Error("FX quote expired; request a fresh quote");
   return payload;
 }
