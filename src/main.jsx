@@ -595,6 +595,7 @@ function PayWorkspace() {
   const [receipt, setReceipt] = useState(null);
   const [history, setHistory] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [trackingBusy, setTrackingBusy] = useState(false);
   const [error, setError] = useState("");
 
   async function loadHistory() {
@@ -650,6 +651,37 @@ function PayWorkspace() {
       setBusy(false);
     }
   }
+
+  async function refreshPayoutStatus(silent = false) {
+    if (!quote?.id || trackingBusy) return;
+    if (!silent) setTrackingBusy(true);
+    try {
+      const response = await fetch(`/api/payout-settle?payoutId=${encodeURIComponent(quote.id)}`);
+      const data = await readApiResponse(response);
+      if (!response.ok) throw new Error(data.detail || data.error || "Status check failed");
+      setQuote(data.payout || quote);
+      if (data.receipt) setReceipt(data.receipt);
+      await loadHistory();
+      if (!silent) setError("");
+    } catch (e) {
+      if (!silent) setError(e.message || "Status check failed");
+    } finally {
+      if (!silent) setTrackingBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    const provider = quote?.quote?.provider;
+    const localStatus = String(quote?.status || "");
+    const terminal = ["reconciled_external", "failed_external", "refunded_external"].includes(localStatus);
+    if (!receipt || receipt.reconciled || provider !== "wise_sandbox" || terminal) return;
+
+    const timer = setInterval(() => {
+      refreshPayoutStatus(true);
+    }, 12000);
+
+    return () => clearInterval(timer);
+  }, [quote?.id, quote?.status, quote?.quote?.provider, receipt?.reconciled]);
 
   async function approveAndPay() {
     if (!quote?.id || busy) return;
@@ -790,7 +822,18 @@ function PayWorkspace() {
                 <div><span>Status</span><b className="green">{receipt.reconciled ? "Matched ✓" : (receipt.provider_status || "Provider tracking")}</b></div>
                 {receipt.provider && <div><span>Provider</span><b>{receipt.provider}</b></div>}
               </div>
-              <p className="sandbox-note">This receipt proves the 33Jack approval → payout adapter → reconciliation workflow. No real fiat was transmitted.</p>
+              {!receipt.reconciled && receipt.provider === "Wise Sandbox" && (
+                <button type="button" className="secondary wide" onClick={() => refreshPayoutStatus(false)} disabled={trackingBusy}>
+                  <RefreshCw size={16}/>{trackingBusy ? " Checking Wise…" : " Check Wise status"}
+                </button>
+              )}
+              <p className="sandbox-note">
+                {receipt.reconciled
+                  ? "Wise reported the payout as sent. 33Jack reconciled the provider receipt automatically."
+                  : receipt.provider === "Wise Sandbox"
+                    ? "33Jack is tracking this Wise Sandbox transfer automatically. Sandbox transfers do not move real money."
+                    : "This receipt proves the 33Jack approval → payout adapter → reconciliation workflow. No real fiat was transmitted."}
+              </p>
             </div>
           ) : (
             <>
