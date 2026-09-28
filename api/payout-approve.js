@@ -7,17 +7,24 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
   try {
-    const payout = await getPayout(req.body?.payoutId);
+    let payout = await getPayout(req.body?.payoutId);
     if (!payout) return res.status(404).json({ error: "Payout not found" });
     if (payout.status !== "quoted") {
       return res.status(409).json({ error: "Payout is not awaiting approval", detail: payout.status });
     }
     if (Date.now() > Number(payout.quote?.expiresAt || 0)) {
+      const previousTerms = {
+        destinationAmount: Number(payout.destination_amount),
+        exchangeRate: Number(payout.exchange_rate),
+        feeAmount: Number(payout.fee_amount)
+      };
+
       const freshQuote = buildSandboxQuote({
         fundingAsset: payout.funding_asset,
         fundingAmount: Number(payout.funding_amount),
         destinationCurrency: payout.destination_currency
       });
+
       const refreshed = await savePayout({
         ...payout,
         destination_amount: freshQuote.destinationAmount,
@@ -26,6 +33,7 @@ export default async function handler(req, res) {
         quote: freshQuote,
         status: "quoted"
       });
+
       await addAuditEvent(payout.id, "fiat_payout_quote_refreshed", "33jack-pay", {
         previous_expires_at: payout.quote?.expiresAt || null,
         refreshed_expires_at: freshQuote.expiresAt,
@@ -33,11 +41,23 @@ export default async function handler(req, res) {
         exchange_rate: freshQuote.exchangeRate,
         fee_amount: freshQuote.feeAmount
       });
-      return res.status(409).json({
-        error: "Quote refreshed",
-        detail: "The previous quote expired. 33Jack refreshed it automatically; review the updated terms and approve again.",
-        refreshedPayout: refreshed
-      });
+
+      const termsChanged =
+        previousTerms.destinationAmount !== Number(freshQuote.destinationAmount) ||
+        previousTerms.exchangeRate !== Number(freshQuote.exchangeRate) ||
+        previousTerms.feeAmount !== Number(freshQuote.feeAmount);
+
+      if (termsChanged) {
+        return res.status(409).json({
+          error: "Quote changed",
+          detail: "The FX or fee terms changed. Review the refreshed quote before approving.",
+          refreshedPayout: refreshed
+        });
+      }
+
+      // Sandbox rates are deterministic. If the refreshed economics are identical,
+      // continue approval in the same request instead of forcing a pointless second click.
+      payout = refreshed;
     }
 
     const approvalToken = signPayoutApproval(payout);
