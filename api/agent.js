@@ -1,6 +1,25 @@
 import OpenAI from "openai";
 import { listBeneficiaries, listPayments } from "./_lib/db.js";
 import { handleTelegramWebhook } from "./_lib/telegram.js";
+import { handleWhatsAppWebhook } from "./_lib/whatsapp.js";
+
+export const config = { api: { bodyParser: false } };
+
+async function readRawBody(req) {
+  if (Buffer.isBuffer(req.body)) return req.body;
+  if (typeof req.body === "string") return Buffer.from(req.body);
+  if (req.body && typeof req.body === "object") {
+    return Buffer.from(JSON.stringify(req.body));
+  }
+  const chunks = [];
+  for await (const chunk of req) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks);
+}
+
+function parseJsonBody(raw) {
+  if (!raw?.length) return {};
+  return JSON.parse(raw.toString("utf8"));
+}
 
 function compactPayment(p) {
   return {
@@ -98,14 +117,38 @@ function fallbackAnswer(message, payments) {
 }
 
 export default async function handler(req, res) {
-  if (String(req.query?.provider || "").toLowerCase() === "telegram") {
-    if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
-    return handleTelegramWebhook(req, res);
+  const provider = String(req.query?.provider || "").toLowerCase();
+
+  if (provider === "whatsapp" && req.method === "GET") {
+    return handleWhatsAppWebhook(req, res, Buffer.alloc(0));
   }
 
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
-  const message = String(req.body?.message || "").trim();
+  let rawBody;
+  try {
+    rawBody = await readRawBody(req);
+  } catch {
+    return res.status(400).json({ error: "Could not read request body" });
+  }
+
+  if (provider === "whatsapp") {
+    return handleWhatsAppWebhook(req, res, rawBody);
+  }
+
+  let body;
+  try {
+    body = parseJsonBody(rawBody);
+  } catch {
+    return res.status(400).json({ error: "Invalid JSON body" });
+  }
+  req.body = body;
+
+  if (provider === "telegram") {
+    return handleTelegramWebhook(req, res);
+  }
+
+  const message = String(body?.message || "").trim();
   if (!message) return res.status(400).json({ error: "message is required" });
   if (message.length > 2000) return res.status(400).json({ error: "message is too long" });
 
