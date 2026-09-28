@@ -104,7 +104,42 @@ export async function getPayout(id) {
 
 export async function listPayouts(limit = 25) {
   const client = db();
-  if (!client) return memory.slice(0, limit);
+  if (!client) {
+    const ranked = [...memory].sort((a, b) => {
+      const score = (row) =>
+        row.status === "paid_sandbox" ? 0 :
+        row.status === "processing" ? 1 :
+        row.status === "approved" ? 2 : 3;
+      const statusDelta = score(a) - score(b);
+      if (statusDelta !== 0) return statusDelta;
+      return new Date(b.updated_at || b.created_at || 0) - new Date(a.updated_at || a.created_at || 0);
+    });
+    const seen = new Set();
+    return ranked.filter((row) => {
+      const key = row.invoice_ref || row.id;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, limit);
+  }
+
   await ensurePayoutSchema();
-  return client`select * from jack_payouts order by created_at desc limit ${limit}`;
+  return client`
+    select *
+    from (
+      select distinct on (coalesce(invoice_ref, id)) *
+      from jack_payouts
+      order by
+        coalesce(invoice_ref, id),
+        case
+          when status = 'paid_sandbox' then 0
+          when status = 'processing' then 1
+          when status = 'approved' then 2
+          else 3
+        end,
+        updated_at desc
+    ) ranked
+    order by updated_at desc
+    limit ${limit}
+  `;
 }
