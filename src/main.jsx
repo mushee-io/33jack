@@ -521,53 +521,257 @@ function SubunitCards({ onOpen }) {
   );
 }
 
-function PayWorkspace({ onNewPayment }) {
-  const routes = [
-    ["USDG", "CNY", "China bank payout", "Sandbox"],
-    ["USDC", "GBP", "UK bank payout", "Adapter-ready"],
-    ["USDC", "INR", "India bank payout", "Adapter-ready"],
-    ["USDG", "USD", "US bank payout", "Sandbox"]
-  ];
+function PayWorkspace() {
+  const [form, setForm] = useState({
+    fundingAsset: "USDG",
+    fundingAmount: "10000",
+    destinationCurrency: "CNY",
+    invoiceRef: "NXD-2026-1008",
+    beneficiaryName: "Nexora Digital Co., Ltd.",
+    bankName: "Bank of China, Shenzhen Branch",
+    accountLast4: "5678",
+    country: "China"
+  });
+  const [quote, setQuote] = useState(null);
+  const [receipt, setReceipt] = useState(null);
+  const [history, setHistory] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function loadHistory() {
+    try {
+      const response = await fetch("/api/payouts?limit=8");
+      const data = await readApiResponse(response);
+      if (response.ok) setHistory(Array.isArray(data.payouts) ? data.payouts : []);
+    } catch {
+      // Keep the payout workspace usable if history is temporarily unavailable.
+    }
+  }
+
+  useEffect(() => {
+    loadHistory();
+  }, []);
+
+  function patch(key, value) {
+    setForm((current) => ({ ...current, [key]: value }));
+    setQuote(null);
+    setReceipt(null);
+    setError("");
+  }
+
+  async function requestQuote(e) {
+    e?.preventDefault();
+    setBusy(true);
+    setError("");
+    setReceipt(null);
+    try {
+      const response = await fetch("/api/payout-quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fundingAsset: form.fundingAsset,
+          fundingAmount: Number(form.fundingAmount),
+          destinationCurrency: form.destinationCurrency,
+          invoiceRef: form.invoiceRef,
+          beneficiary: {
+            name: form.beneficiaryName,
+            bank_name: form.bankName,
+            account_last4: form.accountLast4,
+            country: form.country
+          }
+        })
+      });
+      const data = await readApiResponse(response);
+      if (!response.ok) throw new Error(data.detail || data.error || "Quote failed");
+      setQuote(data.payout);
+    } catch (e) {
+      setError(e.message || "Quote failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function approveAndPay() {
+    if (!quote?.id || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const approvalResponse = await fetch("/api/payout-approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payoutId: quote.id })
+      });
+      const approval = await readApiResponse(approvalResponse);
+      if (!approvalResponse.ok) throw new Error(approval.detail || approval.error || "Approval failed");
+
+      const settleResponse = await fetch("/api/payout-settle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approvalToken: approval.approvalToken })
+      });
+      const settlement = await readApiResponse(settleResponse);
+      if (!settleResponse.ok) throw new Error(settlement.detail || settlement.error || "Payout failed");
+
+      setReceipt(settlement.receipt || {
+        id: settlement.payout?.receipt_id,
+        status: "PAID (SANDBOX)",
+        funding: `${settlement.payout?.funding_amount} ${settlement.payout?.funding_asset}`,
+        delivered: `${settlement.payout?.destination_amount} ${settlement.payout?.destination_currency}`,
+        beneficiary: settlement.payout?.beneficiary?.name,
+        reconciled: true
+      });
+      setQuote(settlement.payout);
+      await loadHistory();
+    } catch (e) {
+      setError(e.message || "Payout failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const q = quote?.quote || null;
+  const destinationAmount = Number(quote?.destination_amount || q?.destinationAmount || 0);
+  const fundingAmount = Number(quote?.funding_amount || q?.fundingAmount || 0);
+  const feeAmount = Number(quote?.fee_amount || q?.feeAmount || 0);
+  const exchangeRate = Number(quote?.exchange_rate || q?.exchangeRate || 0);
 
   return (
     <section className="workspace-page unit-workspace">
       <div className="unit-hero">
         <div>
           <span className="eyebrow">33JACK PAY · STABLECOIN → FIAT</span>
-          <h2>Give 33Jack stablecoins. The vendor receives local money.</h2>
-          <p>33Jack reads the invoice, checks the obligation, prepares an FX/payout route and waits for exact approval. Regulated partners handle production conversion and bank delivery.</p>
-          <button className="primary" onClick={onNewPayment}><Sparkles size={16}/> Prepare fiat payout</button>
+          <h2>Fund in stablecoins. Deliver local currency.</h2>
+          <p>33Jack builds the payout instruction, quotes FX and fees, binds approval to the exact beneficiary and amount, then runs the sandbox payout and reconciles the receipt.</p>
         </div>
         <div className="unit-flow">
-          <span>USDG / USDC / USDT</span><ArrowRight/><span>33Jack</span><ArrowRight/><span>FX + payout partner</span><ArrowRight/><span>Vendor bank</span>
+          <span>USDG / USDC / USDT</span><ArrowRight/><span>33Jack controls</span><ArrowRight/><span>FX + payout adapter</span><ArrowRight/><span>Vendor bank</span>
         </div>
       </div>
-      <div className="unit-panels">
-        <div className="card unit-panel">
-          <span className="eyebrow">ROUTE BOOK</span>
-          <h3>Initial payout corridors</h3>
-          {routes.map(([funding, currency, delivery, status]) => (
-            <div className="unit-route-row" key={funding + currency}>
-              <span><b>{funding} → {currency}</b><small>{delivery}</small></span>
-              <i>{status}</i>
-            </div>
-          ))}
-        </div>
-        <div className="card unit-panel">
-          <span className="eyebrow">CONTROL MODEL</span>
-          <h3>33Jack does not silently move money.</h3>
-          <div className="control-list">
-            <p><CheckCircle2/>Invoice and beneficiary extracted</p>
-            <p><CheckCircle2/>Duplicate / beneficiary-change checks</p>
-            <p><CheckCircle2/>FX, fee and received amount presented</p>
-            <p><CheckCircle2/>Human approval bound to exact proposal</p>
-            <p><Clock3/>Production payout adapter still requires regulated partner integration</p>
+
+      {error && <div className="pay-error">{error}</div>}
+
+      <div className="pay-builder">
+        <form className="card pay-form" onSubmit={requestQuote}>
+          <div className="pay-form-head">
+            <div><span className="eyebrow">PAYOUT INSTRUCTION</span><h3>Prepare vendor payout</h3></div>
+            <span className="sandbox-badge">SANDBOX LIVE</span>
           </div>
+
+          <div className="form-split">
+            <label>Funding asset
+              <select value={form.fundingAsset} onChange={(e) => patch("fundingAsset", e.target.value)}>
+                <option>USDG</option><option>USDC</option><option>USDT</option>
+              </select>
+            </label>
+            <label>Funding amount
+              <input type="number" min="1" step="0.01" value={form.fundingAmount} onChange={(e) => patch("fundingAmount", e.target.value)}/>
+            </label>
+          </div>
+
+          <div className="form-split">
+            <label>Destination currency
+              <select value={form.destinationCurrency} onChange={(e) => patch("destinationCurrency", e.target.value)}>
+                <option>CNY</option><option>GBP</option><option>INR</option><option>USD</option>
+              </select>
+            </label>
+            <label>Invoice reference
+              <input value={form.invoiceRef} onChange={(e) => patch("invoiceRef", e.target.value)} placeholder="INV-2026-001"/>
+            </label>
+          </div>
+
+          <div className="pay-divider">Beneficiary bank</div>
+          <label>Beneficiary name
+            <input value={form.beneficiaryName} onChange={(e) => patch("beneficiaryName", e.target.value)}/>
+          </label>
+          <label>Bank name
+            <input value={form.bankName} onChange={(e) => patch("bankName", e.target.value)}/>
+          </label>
+          <div className="form-split">
+            <label>Account last 4
+              <input maxLength={4} value={form.accountLast4} onChange={(e) => patch("accountLast4", e.target.value.replace(/\D/g, "").slice(0,4))}/>
+            </label>
+            <label>Country
+              <input value={form.country} onChange={(e) => patch("country", e.target.value)}/>
+            </label>
+          </div>
+
+          <button className="primary wide" disabled={busy}>
+            <RefreshCw size={16}/>{busy ? " Preparing…" : " Get payout quote"}
+          </button>
+          <small className="fine">Sandbox only: this stage does not convert stablecoins or transmit fiat through a bank.</small>
+        </form>
+
+        <div className="card pay-quote">
+          {!quote ? (
+            <div className="pay-placeholder">
+              <Landmark size={30}/>
+              <span className="eyebrow">EXACT PAYOUT QUOTE</span>
+              <h3>Route, FX, fee and received amount appear here.</h3>
+              <p>The quote becomes immutable once approved. Any change requires a fresh quote.</p>
+            </div>
+          ) : receipt ? (
+            <div className="pay-receipt">
+              <div className="done-icon"><Check size={30}/></div>
+              <span className="eyebrow">PAYOUT RECONCILED</span>
+              <h3>{receipt.status}</h3>
+              <div className="receipt">
+                <div><span>Receipt</span><b>{receipt.id}</b></div>
+                <div><span>Funding</span><b>{receipt.funding}</b></div>
+                <div><span>Delivered</span><b>{receipt.delivered}</b></div>
+                <div><span>Beneficiary</span><b>{receipt.beneficiary}</b></div>
+                <div><span>Bank</span><b>{receipt.bank || form.bankName}</b></div>
+                <div><span>Status</span><b className="green">{receipt.reconciled ? "Matched ✓" : "Processing"}</b></div>
+              </div>
+              <p className="sandbox-note">This receipt proves the 33Jack approval → payout adapter → reconciliation workflow. No real fiat was transmitted.</p>
+            </div>
+          ) : (
+            <>
+              <div className="pay-form-head">
+                <div><span className="eyebrow">EXACT PAYOUT QUOTE</span><h3>{quote.beneficiary?.name}</h3></div>
+                <span className="sandbox-badge">5 MIN QUOTE</span>
+              </div>
+              <div className="pay-big-amount">
+                <small>Vendor receives</small>
+                <strong>{destinationAmount.toLocaleString(undefined, {maximumFractionDigits:2})} {quote.destination_currency}</strong>
+              </div>
+              <div className="proposal-lines">
+                <p><span>You fund</span><b>{fundingAmount.toLocaleString()} {quote.funding_asset}</b></p>
+                <p><span>Reference FX</span><b>1 USD = {exchangeRate} {quote.destination_currency}</b></p>
+                <p><span>Service + FX</span><b>{feeAmount.toFixed(2)} {quote.funding_asset}</b></p>
+                <p><span>Delivery target</span><b>{q?.eta || "same business day"}</b></p>
+                <p><span>Bank</span><b>{quote.beneficiary?.bank_name} · ••••{quote.beneficiary?.account_last4}</b></p>
+                <p><span>Invoice</span><b>{quote.invoice_ref || "No reference"}</b></p>
+              </div>
+              <div className="route">
+                <span>{quote.funding_asset}</span><ArrowRight/><span>33Jack</span><ArrowRight/><span>{quote.destination_currency}</span><ArrowRight/><span>Bank</span>
+              </div>
+              <button className="primary wide" onClick={approveAndPay} disabled={busy}>
+                <ShieldCheck size={16}/>{busy ? " Processing…" : " Approve exact payout"}
+              </button>
+              <small className="fine">Approval is HMAC-bound to funding amount, FX quote, fee, destination amount and beneficiary.</small>
+            </>
+          )}
         </div>
+      </div>
+
+      <div className="card payout-history">
+        <div className="card-head">
+          <div><span className="eyebrow">33JACK PAY LEDGER</span><h3>Recent fiat payout simulations</h3></div>
+          <span className="sandbox-badge">NEON PERSISTED</span>
+        </div>
+        {history.length ? history.map((p) => (
+          <div className="payout-history-row" key={p.id}>
+            <span><b>{p.beneficiary?.name || "Beneficiary"}</b><small>{p.invoice_ref || p.id}</small></span>
+            <span><b>{Number(p.funding_amount).toLocaleString()} {p.funding_asset}</b><small>funding</small></span>
+            <span><b>{Number(p.destination_amount).toLocaleString()} {p.destination_currency}</b><small>destination</small></span>
+            <span className="status-raw">{String(p.status || "").replaceAll("_", " ")}</span>
+          </div>
+        )) : <div className="empty-records">No fiat payout simulations yet.</div>}
       </div>
     </section>
   );
 }
+
 
 function CryptoWorkspace({ onNewPayment }) {
   return (
