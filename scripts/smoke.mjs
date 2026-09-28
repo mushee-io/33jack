@@ -210,6 +210,12 @@ globalThis.fetch = async (url, options = {}) => {
       status: "incoming_payment_waiting"
     }), { status: 200, headers: { "Content-Type": "application/json" } });
   }
+  if (path.includes("/transfers/16521632/payments") && options.method === "POST") {
+    return new Response(JSON.stringify({ message: "Forbidden" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
   return new Response(JSON.stringify({ error: "unexpected test request" }), {
     status: 500,
     headers: { "Content-Type": "application/json" }
@@ -242,6 +248,9 @@ assert.equal(wiseTransfer.provider, "wise_sandbox");
 assert.equal(wiseTransfer.transferId, "16521632");
 assert.equal(wiseTransfer.providerStatus, "incoming_payment_waiting");
 assert.equal(wiseTransfer.funded, false);
+
+process.env.WISE_BALANCE_ID = "999";
+process.env.WISE_AUTO_FUND = "true";
 
 const externalQuoteResponse = await invoke(payoutQuote, "POST", {
   fundingAsset: "USDG",
@@ -280,12 +289,20 @@ assert.equal(
   "incoming_payment_waiting"
 );
 assert.equal(externalSettlementResponse.data.receipt.reconciled, false);
+assert.equal(externalSettlementResponse.data.provider.funded, false);
+assert.equal(externalSettlementResponse.data.provider.manualFundingRequired, true);
+assert.equal(
+  externalSettlementResponse.data.provider.fundingStatus,
+  "MANUAL_OR_SCA_REQUIRED"
+);
 
 globalThis.fetch = originalFetch;
 process.env.PAYOUT_PROVIDER = "internal_sandbox";
 delete process.env.WISE_SANDBOX_TOKEN;
 delete process.env.WISE_PROFILE_ID;
 delete process.env.WISE_RECIPIENT_ACCOUNT_ID;
+delete process.env.WISE_BALANCE_ID;
+delete process.env.WISE_AUTO_FUND;
 
 const status = await invoke(health, "GET");
 assert.equal(status.status, 200);
