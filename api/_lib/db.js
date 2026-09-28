@@ -48,6 +48,7 @@ export async function ensureSchema() {
       status text not null,
       settlement_signature text,
       approval jsonb,
+      invoice_meta jsonb,
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     )
@@ -58,6 +59,7 @@ export async function ensureSchema() {
   await client`alter table jack_payments add column if not exists route_options jsonb`;
   await client`alter table jack_payments add column if not exists beneficiary jsonb`;
   await client`alter table jack_payments add column if not exists approval jsonb`;
+  await client`alter table jack_payments add column if not exists invoice_meta jsonb`;
 
   await client`
     create index if not exists jack_payments_invoice_hash_idx
@@ -150,6 +152,7 @@ export async function savePayment(payment) {
         route_options: payment.route_options === undefined ? existing.route_options : payment.route_options,
         beneficiary: payment.beneficiary === undefined ? existing.beneficiary : payment.beneficiary,
         approval: payment.approval === undefined ? existing.approval : payment.approval,
+        invoice_meta: payment.invoice_meta === undefined ? existing.invoice_meta : payment.invoice_meta,
         updated_at: new Date().toISOString()
       };
       return memory.payments[idx];
@@ -169,12 +172,13 @@ export async function savePayment(payment) {
   const routeOptions = payment.route_options === undefined ? null : JSON.stringify(payment.route_options);
   const beneficiary = payment.beneficiary === undefined ? null : JSON.stringify(payment.beneficiary);
   const approval = payment.approval === undefined ? null : JSON.stringify(payment.approval);
+  const invoiceMeta = payment.invoice_meta === undefined ? null : JSON.stringify(payment.invoice_meta);
 
   const [row] = await client`
     insert into jack_payments (
       id, invoice_name, invoice_number, invoice_hash, supplier,
       source_currency, destination_currency, source_amount, destination_amount,
-      route, route_options, beneficiary, risk, status, settlement_signature, approval
+      route, route_options, beneficiary, risk, status, settlement_signature, approval, invoice_meta
     ) values (
       ${payment.id}, ${payment.invoice_name}, ${payment.invoice_number || null},
       ${payment.invoice_hash || null}, ${payment.supplier || null},
@@ -183,7 +187,7 @@ export async function savePayment(payment) {
       ${payment.route || null},
       ${routeOptions}::jsonb, ${beneficiary}::jsonb, ${risk}::jsonb,
       ${payment.status || "analyzed"}, ${payment.settlement_signature || null},
-      ${approval}::jsonb
+      ${approval}::jsonb, ${invoiceMeta}::jsonb
     )
     on conflict (id) do update set
       invoice_name = coalesce(excluded.invoice_name, jack_payments.invoice_name),
@@ -201,6 +205,7 @@ export async function savePayment(payment) {
       status = excluded.status,
       settlement_signature = coalesce(excluded.settlement_signature, jack_payments.settlement_signature),
       approval = coalesce(excluded.approval, jack_payments.approval),
+      invoice_meta = coalesce(excluded.invoice_meta, jack_payments.invoice_meta),
       updated_at = now()
     returning *
   `;
