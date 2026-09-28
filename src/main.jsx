@@ -661,7 +661,14 @@ function PayWorkspace() {
         body: JSON.stringify({ payoutId: quote.id })
       });
       const approval = await readApiResponse(approvalResponse);
-      if (!approvalResponse.ok) throw new Error(approval.detail || approval.error || "Approval failed");
+      if (!approvalResponse.ok) {
+        if (approvalResponse.status === 409 && approval.refreshedPayout) {
+          setQuote(approval.refreshedPayout);
+          setError(approval.detail || "Quote changed. Review the refreshed terms before approving.");
+          return;
+        }
+        throw new Error(approval.detail || approval.error || "Approval failed");
+      }
 
       const settleResponse = await fetch("/api/payout-settle", {
         method: "POST",
