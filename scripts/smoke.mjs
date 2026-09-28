@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import analyze from "../api/analyze.js";
+import agent from "../api/agent.js";
 import approve from "../api/approve.js";
 import settle from "../api/settle.js";
 import paymentDetail from "../api/payment.js";
@@ -14,9 +15,9 @@ import { getPayout, savePayout } from "../api/_lib/payout-store.js";
 import { getPayoutQuote, executeExternalPayout, getPayoutProviderReadiness } from "../api/_lib/payout-provider.js";
 import { evaluatePayoutPolicy } from "../api/_lib/policy.js";
 
-function invoke(handler, method = "GET", body = undefined, query = undefined) {
+function invoke(handler, method = "GET", body = undefined, query = undefined, headers = {}) {
   return new Promise((resolve, reject) => {
-    const req = { method, body, query: query || {}, headers: {} };
+    const req = { method, body, query: query || {}, headers };
     const res = {
       code: 200,
       status(code) { this.code = code; return this; },
@@ -407,9 +408,50 @@ delete process.env.WISE_RECIPIENT_ACCOUNT_ID;
 delete process.env.WISE_BALANCE_ID;
 delete process.env.WISE_AUTO_FUND;
 
+process.env.TELEGRAM_BOT_TOKEN = "ci-telegram-token";
+process.env.TELEGRAM_WEBHOOK_SECRET = "ci-telegram-secret";
+process.env.PUBLIC_APP_URL = "https://33jack.example";
+
+const telegramFetch = globalThis.fetch;
+globalThis.fetch = async (url, options = {}) => {
+  const value = String(url);
+  if (value.includes("/sendMessage")) {
+    return new Response(JSON.stringify({
+      ok: true,
+      result: { message_id: 1 }
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }
+  return telegramFetch(url, options);
+};
+
+const blockedTelegram = await invoke(
+  agent,
+  "POST",
+  { message: { chat: { id: 123 }, text: "/start" } },
+  { provider: "telegram" },
+  {}
+);
+assert.equal(blockedTelegram.status, 401);
+
+const telegramStart = await invoke(
+  agent,
+  "POST",
+  { message: { chat: { id: 123 }, text: "/start" } },
+  { provider: "telegram" },
+  { "x-telegram-bot-api-secret-token": "ci-telegram-secret" }
+);
+assert.equal(telegramStart.status, 200);
+assert.equal(telegramStart.data.ok, true);
+
+globalThis.fetch = telegramFetch;
+delete process.env.TELEGRAM_BOT_TOKEN;
+delete process.env.TELEGRAM_WEBHOOK_SECRET;
+delete process.env.PUBLIC_APP_URL;
+
 const status = await invoke(health, "GET");
 assert.equal(status.status, 200);
 assert.equal(status.data.ok, true);
 assert.equal(status.data.checks.secureApprovals, true);
+assert.equal(status.data.channels.telegram.configured, false);
 
-console.log("33jack smoke: invoice settlement + stablecoin→fiat quote→approval→sandbox payout→reconciliation PASS");
+console.log("33jack smoke: invoice settlement + stablecoin→fiat + Wise reconciliation + Telegram channel PASS");
