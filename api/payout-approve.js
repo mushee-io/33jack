@@ -1,5 +1,6 @@
 import { addAuditEvent } from "./_lib/db.js";
 import { signPayoutApproval } from "./_lib/payout-approval.js";
+import { buildSandboxQuote } from "./_lib/payout-quote.js";
 import { getPayout, savePayout } from "./_lib/payout-store.js";
 
 export default async function handler(req, res) {
@@ -12,7 +13,31 @@ export default async function handler(req, res) {
       return res.status(409).json({ error: "Payout is not awaiting approval", detail: payout.status });
     }
     if (Date.now() > Number(payout.quote?.expiresAt || 0)) {
-      return res.status(409).json({ error: "Quote expired", detail: "Request a fresh payout quote." });
+      const freshQuote = buildSandboxQuote({
+        fundingAsset: payout.funding_asset,
+        fundingAmount: Number(payout.funding_amount),
+        destinationCurrency: payout.destination_currency
+      });
+      const refreshed = await savePayout({
+        ...payout,
+        destination_amount: freshQuote.destinationAmount,
+        exchange_rate: freshQuote.exchangeRate,
+        fee_amount: freshQuote.feeAmount,
+        quote: freshQuote,
+        status: "quoted"
+      });
+      await addAuditEvent(payout.id, "fiat_payout_quote_refreshed", "33jack-pay", {
+        previous_expires_at: payout.quote?.expiresAt || null,
+        refreshed_expires_at: freshQuote.expiresAt,
+        destination_amount: freshQuote.destinationAmount,
+        exchange_rate: freshQuote.exchangeRate,
+        fee_amount: freshQuote.feeAmount
+      });
+      return res.status(409).json({
+        error: "Quote refreshed",
+        detail: "The previous quote expired. 33Jack refreshed it automatically; review the updated terms and approve again.",
+        refreshedPayout: refreshed
+      });
     }
 
     const approvalToken = signPayoutApproval(payout);
