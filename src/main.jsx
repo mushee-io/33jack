@@ -804,9 +804,14 @@ function PayWorkspace() {
               <div className="route">
                 <span>{quote.funding_asset}</span><ArrowRight/><span>33Jack</span><ArrowRight/><span>{quote.destination_currency}</span><ArrowRight/><span>Bank</span>
               </div>
-              <button className="primary wide" onClick={approveAndPay} disabled={busy}>
-                <ShieldCheck size={16}/>{busy ? " Processing…" : " Approve exact payout"}
-              </button>
+              <div className="pay-action-row">
+                <button type="button" className="secondary" onClick={requestQuote} disabled={busy}>
+                  <RefreshCw size={16}/> Refresh quote
+                </button>
+                <button type="button" className="primary" onClick={approveAndPay} disabled={busy}>
+                  <ShieldCheck size={16}/>{busy ? " Processing…" : " Approve exact payout"}
+                </button>
+              </div>
               <small className="fine">Approval is HMAC-bound to funding amount, FX quote, fee, destination amount and beneficiary.</small>
             </>
           )}
