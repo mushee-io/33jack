@@ -592,7 +592,7 @@ function PayWorkspace() {
 
   async function loadHistory() {
     try {
-      const response = await fetch("/api/payouts?limit=8");
+      const response = await fetch("/api/payments?kind=payouts&limit=8");
       const data = await readApiResponse(response);
       if (response.ok) setHistory(Array.isArray(data.payouts) ? data.payouts : []);
     } catch {
