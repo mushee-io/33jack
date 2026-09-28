@@ -408,6 +408,82 @@ delete process.env.WISE_RECIPIENT_ACCOUNT_ID;
 delete process.env.WISE_BALANCE_ID;
 delete process.env.WISE_AUTO_FUND;
 
+process.env.WHATSAPP_ACCESS_TOKEN = "ci-whatsapp-token";
+process.env.WHATSAPP_PHONE_NUMBER_ID = "123456789";
+process.env.WHATSAPP_VERIFY_TOKEN = "ci-whatsapp-verify";
+process.env.WHATSAPP_APP_SECRET = "ci-whatsapp-app-secret";
+process.env.WHATSAPP_GRAPH_VERSION = "v26.0";
+process.env.PUBLIC_APP_URL = "https://33jack.example";
+
+const whatsappOriginalFetch = globalThis.fetch;
+globalThis.fetch = async (url, options = {}) => {
+  const value = String(url);
+  if (value.includes("graph.facebook.com") && value.endsWith("/123456789/messages")) {
+    return new Response(JSON.stringify({
+      messaging_product: "whatsapp",
+      contacts: [{ input: "447000000000", wa_id: "447000000000" }],
+      messages: [{ id: "wamid.ci" }]
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }
+  return whatsappOriginalFetch(url, options);
+};
+
+const whatsappPayload = {
+  object: "whatsapp_business_account",
+  entry: [{
+    id: "ci-waba",
+    changes: [{
+      field: "messages",
+      value: {
+        messaging_product: "whatsapp",
+        metadata: {
+          display_phone_number: "441234567890",
+          phone_number_id: "123456789"
+        },
+        contacts: [{ profile: { name: "CI User" }, wa_id: "447000000000" }],
+        messages: [{
+          from: "447000000000",
+          id: "wamid.incoming",
+          timestamp: "1780000000",
+          type: "text",
+          text: { body: "hello" }
+        }]
+      }
+    }]
+  }]
+};
+const whatsappRaw = JSON.stringify(whatsappPayload);
+const whatsappSignature = "sha256=" + crypto
+  .createHmac("sha256", process.env.WHATSAPP_APP_SECRET)
+  .update(Buffer.from(whatsappRaw))
+  .digest("hex");
+
+const badWhatsapp = await invoke(
+  agent,
+  "POST",
+  whatsappPayload,
+  { provider: "whatsapp" },
+  { "x-hub-signature-256": "sha256=deadbeef" }
+);
+assert.equal(badWhatsapp.status, 401);
+
+const whatsappHello = await invoke(
+  agent,
+  "POST",
+  whatsappPayload,
+  { provider: "whatsapp" },
+  { "x-hub-signature-256": whatsappSignature }
+);
+assert.equal(whatsappHello.status, 200);
+assert.equal(whatsappHello.data.ok, true);
+
+globalThis.fetch = whatsappOriginalFetch;
+delete process.env.WHATSAPP_ACCESS_TOKEN;
+delete process.env.WHATSAPP_PHONE_NUMBER_ID;
+delete process.env.WHATSAPP_VERIFY_TOKEN;
+delete process.env.WHATSAPP_APP_SECRET;
+delete process.env.WHATSAPP_GRAPH_VERSION;
+
 process.env.TELEGRAM_BOT_TOKEN = "ci-telegram-token";
 process.env.TELEGRAM_WEBHOOK_SECRET = "ci-telegram-secret";
 process.env.PUBLIC_APP_URL = "https://33jack.example";
@@ -452,6 +528,7 @@ const status = await invoke(health, "GET");
 assert.equal(status.status, 200);
 assert.equal(status.data.ok, true);
 assert.equal(status.data.checks.secureApprovals, true);
+assert.equal(status.data.channels.whatsapp.configured, false);
 assert.equal(status.data.channels.telegram.configured, false);
 
-console.log("33jack smoke: invoice settlement + stablecoin→fiat + Wise reconciliation + Telegram channel PASS");
+console.log("33jack smoke: invoice settlement + Wise reconciliation + WhatsApp + Telegram channels PASS");
