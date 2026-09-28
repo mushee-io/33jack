@@ -5,14 +5,18 @@ import {
   BadgeCheck,
   Banknote,
   Bot,
+  Building2,
+  Coins,
   Check,
   CheckCircle2,
   ChevronRight,
   CircleDollarSign,
   Clock3,
   FileCheck2,
+  FilePlus2,
   FileText,
   Globe2,
+  Landmark,
   LayoutDashboard,
   MessageCircleMore,
   Plus,
@@ -38,11 +42,13 @@ const samplePayments = [
 
 const nav = [
   ["Overview", LayoutDashboard],
-  ["Invoices", ReceiptText],
+  ["Agent", Bot],
+  ["33Jack Pay", Landmark],
+  ["33Jack Crypto", Coins],
+  ["33Jack Invoice", FilePlus2],
   ["Payments", CircleDollarSign],
   ["Beneficiaries", WalletCards],
   ["Approvals", ShieldCheck],
-  ["Agent", Bot],
 ];
 
 const steps = [
@@ -52,6 +58,33 @@ const steps = [
   ["Approval", "Human approval is bound to amount, beneficiary, route and expiry.", BadgeCheck],
   ["Settlement", "USDG settles on Solana, then the local payout partner completes delivery.", Zap],
   ["Reconciliation", "Payment evidence is matched back to the invoice automatically.", FileCheck2],
+];
+
+const subunits = [
+  {
+    name: "33Jack Pay",
+    eyebrow: "STABLECOIN → FIAT",
+    description: "Fund with stablecoins, pay approved vendors in their local currency through payout partners.",
+    status: "Sandbox route",
+    icon: Landmark,
+    bullets: ["USDG / USDC / USDT funding", "FX + payout quote", "Local bank delivery", "Receipt + reconciliation"]
+  },
+  {
+    name: "33Jack Crypto",
+    eyebrow: "STABLECOIN → STABLECOIN",
+    description: "Invoice-led wallet payouts for vendors, contractors and crypto-native teams.",
+    status: "Devnet live",
+    icon: Coins,
+    bullets: ["USDG on Solana", "Exact approval binding", "Wallet settlement", "Onchain proof"]
+  },
+  {
+    name: "33Jack Invoice",
+    eyebrow: "INVOICE INTELLIGENCE",
+    description: "Create, read and verify payment instructions before either payment rail is used.",
+    status: "Live",
+    icon: FilePlus2,
+    bullets: ["Groq extraction", "Invoice creator", "Risk + duplicate checks", "Payment status"]
+  }
 ];
 
 function Logo() {
@@ -453,6 +486,165 @@ function ChannelPreview() {
 }
 
 
+
+function SubunitCards({ onOpen }) {
+  return (
+    <section className="subunit-section">
+      <div className="section-head">
+        <div>
+          <span className="eyebrow">ONE AGENT · THREE OPERATING UNITS</span>
+          <h2>33Jack routes the obligation to the right rail.</h2>
+        </div>
+        <p>Invoice intelligence sits in front. Stablecoin settlement or local-currency payout happens only after deterministic checks and explicit approval.</p>
+      </div>
+      <div className="subunit-grid">
+        {subunits.map((unit) => {
+          const Icon = unit.icon;
+          return (
+            <button className="subunit-card" key={unit.name} onClick={() => onOpen(unit.name)}>
+              <div className="subunit-card-top">
+                <span className="subunit-icon"><Icon size={20}/></span>
+                <span className={"subunit-status " + (unit.status === "Devnet live" || unit.status === "Live" ? "live" : "")}>{unit.status}</span>
+              </div>
+              <span className="eyebrow">{unit.eyebrow}</span>
+              <h3>{unit.name}</h3>
+              <p>{unit.description}</p>
+              <div className="subunit-bullets">
+                {unit.bullets.map((item) => <span key={item}><Check size={12}/>{item}</span>)}
+              </div>
+              <div className="subunit-open">Open unit <ArrowRight size={14}/></div>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function PayWorkspace({ onNewPayment }) {
+  const routes = [
+    ["USDG", "CNY", "China bank payout", "Sandbox"],
+    ["USDC", "GBP", "UK bank payout", "Adapter-ready"],
+    ["USDC", "INR", "India bank payout", "Adapter-ready"],
+    ["USDG", "USD", "US bank payout", "Sandbox"]
+  ];
+
+  return (
+    <section className="workspace-page unit-workspace">
+      <div className="unit-hero">
+        <div>
+          <span className="eyebrow">33JACK PAY · STABLECOIN → FIAT</span>
+          <h2>Give 33Jack stablecoins. The vendor receives local money.</h2>
+          <p>33Jack reads the invoice, checks the obligation, prepares an FX/payout route and waits for exact approval. Regulated partners handle production conversion and bank delivery.</p>
+          <button className="primary" onClick={onNewPayment}><Sparkles size={16}/> Prepare fiat payout</button>
+        </div>
+        <div className="unit-flow">
+          <span>USDG / USDC / USDT</span><ArrowRight/><span>33Jack</span><ArrowRight/><span>FX + payout partner</span><ArrowRight/><span>Vendor bank</span>
+        </div>
+      </div>
+      <div className="unit-panels">
+        <div className="card unit-panel">
+          <span className="eyebrow">ROUTE BOOK</span>
+          <h3>Initial payout corridors</h3>
+          {routes.map(([funding, currency, delivery, status]) => (
+            <div className="unit-route-row" key={funding + currency}>
+              <span><b>{funding} → {currency}</b><small>{delivery}</small></span>
+              <i>{status}</i>
+            </div>
+          ))}
+        </div>
+        <div className="card unit-panel">
+          <span className="eyebrow">CONTROL MODEL</span>
+          <h3>33Jack does not silently move money.</h3>
+          <div className="control-list">
+            <p><CheckCircle2/>Invoice and beneficiary extracted</p>
+            <p><CheckCircle2/>Duplicate / beneficiary-change checks</p>
+            <p><CheckCircle2/>FX, fee and received amount presented</p>
+            <p><CheckCircle2/>Human approval bound to exact proposal</p>
+            <p><Clock3/>Production payout adapter still requires regulated partner integration</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CryptoWorkspace({ onNewPayment }) {
+  return (
+    <section className="workspace-page unit-workspace">
+      <div className="unit-hero">
+        <div>
+          <span className="eyebrow">33JACK CRYPTO · STABLECOIN → STABLECOIN</span>
+          <h2>Stablecoin payouts for vendors, contractors and crypto-native teams.</h2>
+          <p>Upload the obligation, verify the destination wallet, approve the exact payment and settle with an auditable onchain receipt.</p>
+          <button className="primary" onClick={onNewPayment}><Coins size={16}/> New stablecoin payment</button>
+        </div>
+        <div className="unit-flow">
+          <span>Invoice</span><ArrowRight/><span>Risk + approval</span><ArrowRight/><span>USDG</span><ArrowRight/><span>Solana wallet</span>
+        </div>
+      </div>
+      <div className="unit-panels">
+        <div className="card unit-panel live-panel">
+          <span className="eyebrow">LIVE DEVNET RAIL</span>
+          <h3>USDG · Solana Token-2022</h3>
+          <p>Server-side signer, exact approval binding, transaction signature persistence and reconciliation are already implemented.</p>
+          <div className="rail-badges"><span>USDG</span><span>Solana Devnet</span><span>Token-2022</span><span>Explorer proof</span></div>
+        </div>
+        <div className="card unit-panel">
+          <span className="eyebrow">NEXT ASSETS</span>
+          <h3>Keep the treasury stablecoin-only.</h3>
+          <p>USDC and USDT can be added behind the same settlement interface without turning 33Jack into a general volatile-crypto payment app.</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function InvoiceWorkspace({ onNewPayment }) {
+  const [draft, setDraft] = useState({
+    supplier: "Nova Systems Ltd",
+    customer: "Mushee Labs",
+    amount: "5000",
+    currency: "USD",
+    dueDate: "2026-10-10",
+    description: "Engineering services"
+  });
+  const [invoiceNumber] = useState(() => "33J-" + Date.now().toString(36).toUpperCase());
+  const total = Number(draft.amount || 0);
+
+  return (
+    <section className="workspace-page unit-workspace">
+      <div className="section-head">
+        <div><span className="eyebrow">33JACK INVOICE</span><h2>Create a payment-ready invoice.</h2></div>
+        <p>The creator generates a structured instruction that can feed directly back into 33Jack Pay or 33Jack Crypto.</p>
+      </div>
+      <div className="invoice-builder">
+        <div className="card invoice-form">
+          <label>Supplier<input value={draft.supplier} onChange={(e) => setDraft({...draft, supplier:e.target.value})}/></label>
+          <label>Bill to<input value={draft.customer} onChange={(e) => setDraft({...draft, customer:e.target.value})}/></label>
+          <div className="form-split">
+            <label>Amount<input type="number" value={draft.amount} onChange={(e) => setDraft({...draft, amount:e.target.value})}/></label>
+            <label>Currency<select value={draft.currency} onChange={(e) => setDraft({...draft, currency:e.target.value})}><option>USD</option><option>GBP</option><option>CNY</option><option>INR</option><option>USDC</option><option>USDG</option><option>USDT</option></select></label>
+          </div>
+          <label>Due date<input type="date" value={draft.dueDate} onChange={(e) => setDraft({...draft, dueDate:e.target.value})}/></label>
+          <label>Description<textarea value={draft.description} onChange={(e) => setDraft({...draft, description:e.target.value})}/></label>
+          <button className="primary" onClick={onNewPayment}><ArrowRight size={15}/> Use this instruction in payment flow</button>
+        </div>
+        <div className="invoice-preview">
+          <div className="invoice-preview-head"><Logo/><span>PAYMENT-READY</span></div>
+          <div className="invoice-preview-title"><span>INVOICE</span><b>{invoiceNumber}</b></div>
+          <div className="invoice-party"><small>FROM</small><strong>{draft.supplier || "Supplier"}</strong></div>
+          <div className="invoice-party"><small>BILL TO</small><strong>{draft.customer || "Customer"}</strong></div>
+          <div className="invoice-line"><span>{draft.description || "Services"}</span><b>{draft.currency} {total.toLocaleString()}</b></div>
+          <div className="invoice-total"><span>TOTAL DUE</span><strong>{draft.currency} {total.toLocaleString()}</strong></div>
+          <div className="invoice-meta"><span>Due {draft.dueDate || "—"}</span><span>33Jack tag · {invoiceNumber}</span></div>
+          <div className="invoice-note">Generated as a structured payment instruction. Settlement still requires beneficiary verification and explicit approval.</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function AgentWorkspace() {
   const [messages, setMessages] = useState([
     { role: "agent", text: "Ask me about payment risk, failures, suppliers, or what needs attention. I am read-only here; money movement stays behind the structured approval flow." }
@@ -670,6 +862,8 @@ function App() {
             </div>
           </section>
 
+          <SubunitCards onOpen={setActive}/>
+
           <section className="metrics">
             <Metric label="Payment records" value={livePayments.length || "—"} sub={livePayments.length ? `${persistence} persistence` : "No live records yet"}/>
             <Metric label="Invoices analyzed" value={livePayments.filter((p) => p.status).length || "—"} sub="Stored payment workflow records"/>
@@ -732,6 +926,12 @@ function App() {
           <footer><Logo/><p>Autonomous cross-border finance for global businesses.</p><span>Colosseum build · Solana</span></footer>
           </> : active === "Agent" ? (
             <AgentWorkspace/>
+          ) : active === "33Jack Pay" ? (
+            <PayWorkspace onNewPayment={() => setFlow(true)}/>
+          ) : active === "33Jack Crypto" ? (
+            <CryptoWorkspace onNewPayment={() => setFlow(true)}/>
+          ) : active === "33Jack Invoice" ? (
+            <InvoiceWorkspace onNewPayment={() => setFlow(true)}/>
           ) : (
             <RecordsWorkspace type={active} payments={livePayments} onNewPayment={() => setFlow(true)}/>
           )}
