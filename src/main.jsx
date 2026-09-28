@@ -628,6 +628,7 @@ function PayWorkspace() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          payoutId: quote?.status === "quoted" ? quote.id : undefined,
           fundingAsset: form.fundingAsset,
           fundingAmount: Number(form.fundingAmount),
           destinationCurrency: form.destinationCurrency,
@@ -762,7 +763,7 @@ function PayWorkspace() {
           </div>
 
           <button className="primary wide" disabled={busy}>
-            <RefreshCw size={16}/>{busy ? " Preparing…" : " Get / refresh quote"}
+            <RefreshCw size={16}/>{busy ? " Preparing…" : quote ? " Refresh quote" : " Get payout quote"}
           </button>
           <small className="fine">Sandbox only: this stage does not convert stablecoins or transmit fiat through a bank.</small>
         </form>
@@ -811,14 +812,9 @@ function PayWorkspace() {
               <div className="route">
                 <span>{quote.funding_asset}</span><ArrowRight/><span>33Jack</span><ArrowRight/><span>{quote.destination_currency}</span><ArrowRight/><span>Bank</span>
               </div>
-              <div className="pay-action-row">
-                <button type="button" className="secondary" onClick={requestQuote} disabled={busy}>
-                  <RefreshCw size={16}/> Refresh quote
-                </button>
-                <button type="button" className="primary" onClick={approveAndPay} disabled={busy}>
-                  <ShieldCheck size={16}/>{busy ? " Processing…" : " Approve exact payout"}
-                </button>
-              </div>
+              <button type="button" className="primary wide" onClick={approveAndPay} disabled={busy}>
+                <ShieldCheck size={16}/>{busy ? " Processing…" : " Approve exact payout"}
+              </button>
               <small className="fine">Approval is HMAC-bound to funding amount, FX quote, fee, destination amount and beneficiary.</small>
             </>
           )}
@@ -830,14 +826,20 @@ function PayWorkspace() {
           <div><span className="eyebrow">33JACK PAY LEDGER</span><h3>Recent fiat payout simulations</h3></div>
           <span className="sandbox-badge">NEON PERSISTED</span>
         </div>
-        {history.length ? history.map((p) => (
-          <div className="payout-history-row" key={p.id}>
-            <span><b>{p.beneficiary?.name || "Beneficiary"}</b><small>{p.invoice_ref || p.id}</small></span>
-            <span><b>{Number(p.funding_amount).toLocaleString()} {p.funding_asset}</b><small>funding</small></span>
-            <span><b>{Number(p.destination_amount).toLocaleString()} {p.destination_currency}</b><small>destination</small></span>
-            <span className="status-raw">{String(p.status || "").replaceAll("_", " ")}</span>
-          </div>
-        )) : <div className="empty-records">No fiat payout simulations yet.</div>}
+        {history.length ? history.map((p) => {
+          let beneficiary = p.beneficiary || {};
+          if (typeof beneficiary === "string") {
+            try { beneficiary = JSON.parse(beneficiary); } catch { beneficiary = {}; }
+          }
+          return (
+            <div className="payout-history-row" key={p.id}>
+              <span><b>{beneficiary?.name || "Beneficiary"}</b><small>{p.invoice_ref || p.id}</small></span>
+              <span><b>{Number(p.funding_amount).toLocaleString()} {p.funding_asset}</b><small>funding</small></span>
+              <span><b>{Number(p.destination_amount).toLocaleString()} {p.destination_currency}</b><small>destination</small></span>
+              <span className="status-raw">{String(p.status || "").replaceAll("_", " ")}</span>
+            </div>
+          );
+        }) : <div className="empty-records">No fiat payout simulations yet.</div>}
       </div>
     </section>
   );
