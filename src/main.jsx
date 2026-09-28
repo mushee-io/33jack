@@ -1045,7 +1045,7 @@ function InvoiceWorkspace({ onNewPayment }) {
   );
 }
 
-function AgentWorkspace() {
+function AgentWorkspace({ onNewPayment }) {
   const [messages, setMessages] = useState([
     { role: "agent", text: "Ask me about payment risk, failures, suppliers, or what needs attention. I am read-only here; money movement stays behind the structured approval flow." }
   ]);
@@ -1067,7 +1067,7 @@ function AgentWorkspace() {
       });
       const data = await readApiResponse(response);
       if (!response.ok) throw new Error(data.detail || data.error || "Agent failed");
-      setMessages((m) => [...m, { role: "agent", text: data.answer }]);
+      setMessages((m) => [...m, { role: "agent", text: data.answer, proposal: data.proposal || null }]);
     } catch (e) {
       setMessages((m) => [...m, { role: "agent", text: "I could not read the finance state right now: " + (e.message || "unknown error") }]);
     } finally {
@@ -1089,7 +1089,22 @@ function AgentWorkspace() {
           {messages.map((m, i) => (
             <div key={i} className={"operator-message " + m.role}>
               <span>{m.role === "agent" ? "33" : "YOU"}</span>
-              <p>{m.text}</p>
+              <div>
+                <p>{m.text}</p>
+                {m.proposal && (
+                  <div className="agent-proposal">
+                    <b>{m.proposal.unit} · {m.proposal.invoice || m.proposal.paymentId}</b>
+                    <small>{m.proposal.supplier || "Supplier"} · {m.proposal.route || "Route pending"}</small>
+                    {m.proposal.blockers?.length ? (
+                      <small>Blockers: {m.proposal.blockers.join(", ")}</small>
+                    ) : (
+                      <button type="button" className="secondary" onClick={onNewPayment}>
+                        <ShieldCheck size={14}/> Open structured approval flow
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           ))}
           {busy && <div className="operator-message agent"><span>33</span><p>Checking live 33jack state…</p></div>}
