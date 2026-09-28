@@ -158,3 +158,24 @@ export async function listPayouts(limit = 25) {
   `;
   return rows.map(normalizePayout);
 }
+
+
+export async function findPayoutByProviderTransferId(transferId) {
+  const value = String(transferId || "").trim();
+  if (!value) return null;
+  const client = db();
+  if (!client) {
+    return normalizePayout(
+      memory.find((row) => String(normalizePayout(row)?.quote?.providerTransferId || "") === value) || null
+    );
+  }
+  await ensurePayoutSchema();
+  const rows = await client`
+    select *
+    from jack_payouts
+    where quote->>'providerTransferId' = ${value}
+    order by updated_at desc
+    limit 1
+  `;
+  return normalizePayout(rows[0] || null);
+}
