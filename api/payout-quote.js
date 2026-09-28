@@ -1,6 +1,6 @@
 import { addAuditEvent } from "./_lib/db.js";
 import { buildSandboxQuote } from "./_lib/payout-quote.js";
-import { savePayout } from "./_lib/payout-store.js";
+import { getPayout, savePayout } from "./_lib/payout-store.js";
 
 function cleanBeneficiary(input = {}) {
   return {
@@ -23,8 +23,15 @@ export default async function handler(req, res) {
     }
 
     const quote = buildSandboxQuote(body);
+    const requestedId = String(body.payoutId || "").trim();
+    const existing = requestedId ? await getPayout(requestedId) : null;
+    const payoutId =
+      existing && existing.status === "quoted"
+        ? existing.id
+        : "payout_" + Date.now().toString(36);
+
     const payout = await savePayout({
-      id: "payout_" + Date.now().toString(36),
+      id: payoutId,
       invoice_ref: String(body.invoiceRef || "").trim() || null,
       funding_asset: quote.fundingAsset,
       funding_amount: quote.fundingAmount,
