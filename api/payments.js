@@ -1,9 +1,19 @@
 import { listPayments, persistenceMode, savePayment } from "./_lib/db.js";
+import { listPayouts } from "./_lib/payout-store.js";
 
 export default async function handler(req, res) {
   if (req.method === "GET") {
     const rawLimit = Number(req.query?.limit || 25);
     const limit = Math.min(Math.max(Number.isFinite(rawLimit) ? rawLimit : 25, 1), 100);
+
+    if (String(req.query?.kind || "").toLowerCase() === "payouts") {
+      const payouts = await listPayouts(limit);
+      return res.status(200).json({
+        payouts,
+        persistence: persistenceMode()
+      });
+    }
+
     const rows = await listPayments(limit);
     return res.status(200).json({
       payments: rows,
