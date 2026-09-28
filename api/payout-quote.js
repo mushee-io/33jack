@@ -1,5 +1,5 @@
 import { addAuditEvent } from "./_lib/db.js";
-import { buildSandboxQuote } from "./_lib/payout-quote.js";
+import { getPayoutQuote } from "./_lib/payout-provider.js";
 import { getPayout, savePayout } from "./_lib/payout-store.js";
 
 function cleanBeneficiary(input = {}) {
@@ -22,7 +22,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Beneficiary details are incomplete", detail: missing.join(", ") });
     }
 
-    const quote = buildSandboxQuote(body);
+    const quote = await getPayoutQuote({ ...body, payoutId: body.payoutId });
     const requestedId = String(body.payoutId || "").trim();
     const existing = requestedId ? await getPayout(requestedId) : null;
     const payoutId =
@@ -45,7 +45,8 @@ export default async function handler(req, res) {
     });
 
     await addAuditEvent(payout.id, "fiat_payout_quoted", "33jack-pay", {
-      mode: "sandbox",
+      mode: quote.mode || "sandbox",
+      provider: quote.provider || "internal_sandbox",
       funding_asset: quote.fundingAsset,
       funding_amount: quote.fundingAmount,
       destination_currency: quote.destinationCurrency,
