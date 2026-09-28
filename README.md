@@ -159,6 +159,42 @@ When Postgres state exists, 33jack performs an additional stored-history duplica
 - duplicate and uncertain states should block or escalate
 - production local-currency payouts should use licensed / approved payment partners
 
+## WhatsApp Cloud API channel
+
+WhatsApp is the primary messaging demo channel for 33Jack.
+
+Webhook callback:
+
+`GET/POST /api/agent?provider=whatsapp`
+
+The channel adapter supports:
+
+- Meta webhook verification through `hub.verify_token`
+- `X-Hub-Signature-256` HMAC verification using the Meta app secret
+- inbound PDF, JPG and PNG invoice messages
+- secure media retrieval through the WhatsApp Cloud API
+- the same Groq invoice extraction and deterministic risk controls as the web app
+- `STATUS` for a compact finance-state summary
+- secure handoff back to the 33Jack web approval flow
+- server-side outbound replies through the configured WhatsApp phone-number ID
+
+Required environment:
+
+```bash
+WHATSAPP_ACCESS_TOKEN=
+WHATSAPP_PHONE_NUMBER_ID=
+WHATSAPP_VERIFY_TOKEN=
+WHATSAPP_APP_SECRET=
+WHATSAPP_GRAPH_VERSION=v26.0
+PUBLIC_APP_URL=https://33jack.vercel.app
+```
+
+The Meta app webhook should use your deployed callback URL, for example:
+
+`https://33jack.vercel.app/api/agent?provider=whatsapp`
+
+Subscribe the WhatsApp app to the `messages` webhook field. Keep access tokens and the app secret out of the browser bundle and repository.
+
 ## Wise Sandbox webhook
 
 33Jack accepts Wise transfer events at:
