@@ -1,6 +1,6 @@
 import { addAuditEvent } from "./_lib/db.js";
 import { signPayoutApproval } from "./_lib/payout-approval.js";
-import { buildSandboxQuote } from "./_lib/payout-quote.js";
+import { getPayoutQuote } from "./_lib/payout-provider.js";
 import { getPayout, savePayout } from "./_lib/payout-store.js";
 
 export default async function handler(req, res) {
@@ -29,7 +29,9 @@ export default async function handler(req, res) {
         feeAmount: Number(payout.fee_amount)
       };
 
-      const freshQuote = buildSandboxQuote({
+      const freshQuote = await getPayoutQuote({
+        payoutId: payout.id,
+        invoiceRef: payout.invoice_ref,
         fundingAsset: payout.funding_asset,
         fundingAmount: Number(payout.funding_amount),
         destinationCurrency: payout.destination_currency
