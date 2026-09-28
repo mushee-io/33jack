@@ -36,7 +36,7 @@ export function buildSandboxQuote(input = {}) {
     flatFeeUsd,
     partner: "33Jack Sandbox Payout Rail",
     eta: destinationCurrency === "CNY" ? "same business day" : "under 2 hours",
-    expiresAt: Date.now() + 5 * 60 * 1000,
+    expiresAt: Date.now() + 15 * 60 * 1000,
     disclaimer: "Sandbox quote only. No fiat conversion or bank transfer occurs."
   };
 }
