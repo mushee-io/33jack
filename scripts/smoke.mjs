@@ -10,6 +10,7 @@ import payoutApprove from "../api/payout-approve.js";
 import payoutSettle from "../api/payout-settle.js";
 import { getPayout, savePayout } from "../api/_lib/payout-store.js";
 import { getPayoutQuote, executeExternalPayout, getPayoutProviderReadiness } from "../api/_lib/payout-provider.js";
+import { evaluatePayoutPolicy } from "../api/_lib/policy.js";
 
 function invoke(handler, method = "GET", body = undefined, query = undefined) {
   return new Promise((resolve, reject) => {
@@ -104,6 +105,35 @@ const acknowledgedApproval = await invoke(approve, "POST", {
 });
 assert.equal(acknowledgedApproval.status, 200);
 assert.ok(acknowledgedApproval.data.approvalToken);
+
+const createdInvoice = await invoke(payments, "POST", {
+  kind: "invoice",
+  invoiceNumber: "33J-CI-INVOICE-1",
+  supplier: "CI Supplier Ltd",
+  customer: "Mushee Labs",
+  amount: 5000,
+  currency: "USD",
+  dueDate: "2026-10-10",
+  description: "Engineering services"
+});
+assert.equal(createdInvoice.status, 200);
+assert.equal(createdInvoice.data.invoice.invoice_number, "33J-CI-INVOICE-1");
+assert.equal(createdInvoice.data.invoice.route, "invoice_draft");
+assert.equal(createdInvoice.data.invoice.invoice_meta.customer, "Mushee Labs");
+
+const invoiceList = await invoke(payments, "GET", undefined, { kind: "invoices", limit: 10 });
+assert.equal(invoiceList.status, 200);
+assert.ok(invoiceList.data.invoices.some((invoice) => invoice.invoice_number === "33J-CI-INVOICE-1"));
+
+process.env.PAYOUT_SINGLE_LIMIT_USD = "500";
+const blockedPolicy = evaluatePayoutPolicy({
+  funding_amount: 1000,
+  destination_currency: "CNY",
+  beneficiary: { country: "China" }
+});
+assert.equal(blockedPolicy.allowed, false);
+assert.match(blockedPolicy.reasons.join(" "), /single-payment limit/i);
+delete process.env.PAYOUT_SINGLE_LIMIT_USD;
 
 const fiatQuote = await invoke(payoutQuote, "POST", {
   fundingAsset: "USDG",
