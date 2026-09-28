@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import analyze from "../api/analyze.js";
 import approve from "../api/approve.js";
 import settle from "../api/settle.js";
 import paymentDetail from "../api/payment.js";
 import payments from "../api/payments.js";
 import health from "../api/health.js";
+import reconcile from "../api/reconcile.js";
 import payoutQuote from "../api/payout-quote.js";
 import payoutApprove from "../api/payout-approve.js";
 import payoutSettle from "../api/payout-settle.js";
@@ -15,6 +17,26 @@ import { evaluatePayoutPolicy } from "../api/_lib/policy.js";
 function invoke(handler, method = "GET", body = undefined, query = undefined) {
   return new Promise((resolve, reject) => {
     const req = { method, body, query: query || {}, headers: {} };
+    const res = {
+      code: 200,
+      status(code) { this.code = code; return this; },
+      json(data) { resolve({ status: this.code, data }); return this; },
+      end() { resolve({ status: this.code, data: null }); }
+    };
+    Promise.resolve(handler(req, res)).catch(reject);
+  });
+}
+
+function invokeRaw(handler, method, rawBody, query = {}, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const req = {
+      method,
+      query,
+      headers,
+      async *[Symbol.asyncIterator]() {
+        if (rawBody?.length) yield rawBody;
+      }
+    };
     const res = {
       code: 200,
       status(code) { this.code = code; return this; },
@@ -326,6 +348,43 @@ assert.equal(
   externalSettlementResponse.data.provider.fundingStatus,
   "MANUAL_OR_SCA_REQUIRED"
 );
+
+const { publicKey: webhookPublicKey, privateKey: webhookPrivateKey } =
+  crypto.generateKeyPairSync("rsa", { modulusLength: 2048 });
+process.env.WISE_WEBHOOK_PUBLIC_KEY = webhookPublicKey
+  .export({ type: "spki", format: "pem" })
+  .toString();
+
+const webhookPayload = Buffer.from(JSON.stringify({
+  data: {
+    resource: { type: "transfer", id: 16521632, profile_id: 12345, account_id: 67890 },
+    current_state: "funds_converted",
+    previous_state: "processing",
+    occurred_at: "2026-09-28T18:00:00.000Z"
+  },
+  subscription_id: "ci-subscription",
+  event_type: "transfers#state-change",
+  schema_version: "4.0.0",
+  sent_at: "2026-09-28T18:00:00.100Z"
+}));
+const webhookSignature = crypto
+  .sign("RSA-SHA256", webhookPayload, webhookPrivateKey)
+  .toString("base64");
+const webhookResponse = await invokeRaw(
+  reconcile,
+  "POST",
+  webhookPayload,
+  { provider: "wise" },
+  {
+    "x-signature-sha256": webhookSignature,
+    "x-delivery-id": "ci-delivery-1"
+  }
+);
+assert.equal(webhookResponse.status, 200);
+assert.equal(webhookResponse.data.matched, true);
+assert.equal(webhookResponse.data.status, "processing_external");
+assert.equal(webhookResponse.data.providerStatus, "funds_converted");
+delete process.env.WISE_WEBHOOK_PUBLIC_KEY;
 
 wiseMockStatus = "outgoing_payment_sent";
 const trackedExternal = await invoke(
