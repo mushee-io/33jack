@@ -9,6 +9,7 @@ import payoutQuote from "../api/payout-quote.js";
 import payoutApprove from "../api/payout-approve.js";
 import payoutSettle from "../api/payout-settle.js";
 import { getPayout, savePayout } from "../api/_lib/payout-store.js";
+import { getPayoutQuote, executeExternalPayout, getPayoutProviderReadiness } from "../api/_lib/payout-provider.js";
 
 function invoke(handler, method = "GET", body = undefined, query = undefined) {
   return new Promise((resolve, reject) => {
@@ -175,6 +176,78 @@ assert.equal(
   payoutList.data.payouts.filter((p) => p.invoice_ref === "33J-CI-FIAT-1").length,
   1
 );
+
+const originalFetch = globalThis.fetch;
+process.env.PAYOUT_PROVIDER = "wise_sandbox";
+process.env.WISE_SANDBOX_TOKEN = "ci-wise-token";
+process.env.WISE_PROFILE_ID = "12345";
+process.env.WISE_RECIPIENT_ACCOUNT_ID = "67890";
+delete process.env.WISE_BALANCE_ID;
+
+globalThis.fetch = async (url, options = {}) => {
+  const path = String(url);
+  if (path.includes("/profiles/12345/quotes")) {
+    return new Response(JSON.stringify({
+      id: "8fa9be20-ba43-4b15-abbb-9424e1481050",
+      sourceAmount: 1000,
+      targetAmount: 7120,
+      rate: 7.12,
+      rateExpirationTime: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
+      paymentOptions: [{ fee: { total: 6.5 }, estimatedDelivery: "sandbox estimate" }]
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }
+  if (path.endsWith("/transfers") && options.method === "POST") {
+    return new Response(JSON.stringify({
+      id: 16521632,
+      status: "incoming_payment_waiting",
+      quoteUuid: "8fa9be20-ba43-4b15-abbb-9424e1481050",
+      targetAccount: 67890
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }
+  if (path.endsWith("/transfers/16521632") && options.method === "GET") {
+    return new Response(JSON.stringify({
+      id: 16521632,
+      status: "incoming_payment_waiting"
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }
+  return new Response(JSON.stringify({ error: "unexpected test request" }), {
+    status: 500,
+    headers: { "Content-Type": "application/json" }
+  });
+};
+
+const wiseReadiness = getPayoutProviderReadiness();
+assert.equal(wiseReadiness.provider, "wise_sandbox");
+assert.equal(wiseReadiness.wiseQuoteReady, true);
+assert.equal(wiseReadiness.wiseTransferReady, true);
+
+const wiseQuote = await getPayoutQuote({
+  payoutId: "payout-wise-ci",
+  invoiceRef: "WISE-CI-1",
+  fundingAsset: "USDG",
+  fundingAmount: 1000,
+  destinationCurrency: "CNY"
+});
+assert.equal(wiseQuote.provider, "wise_sandbox");
+assert.equal(wiseQuote.providerQuoteId, "8fa9be20-ba43-4b15-abbb-9424e1481050");
+assert.equal(wiseQuote.destinationAmount, 7120);
+assert.equal(wiseQuote.feeAmount, 6.5);
+
+const wiseTransfer = await executeExternalPayout({
+  id: "payout-wise-ci",
+  invoice_ref: "WISE-CI-1",
+  quote: wiseQuote
+});
+assert.equal(wiseTransfer.provider, "wise_sandbox");
+assert.equal(wiseTransfer.transferId, "16521632");
+assert.equal(wiseTransfer.providerStatus, "incoming_payment_waiting");
+assert.equal(wiseTransfer.funded, false);
+
+globalThis.fetch = originalFetch;
+process.env.PAYOUT_PROVIDER = "internal_sandbox";
+delete process.env.WISE_SANDBOX_TOKEN;
+delete process.env.WISE_PROFILE_ID;
+delete process.env.WISE_RECIPIENT_ACCOUNT_ID;
 
 const status = await invoke(health, "GET");
 assert.equal(status.status, 200);
