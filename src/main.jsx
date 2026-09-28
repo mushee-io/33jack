@@ -594,6 +594,7 @@ function PayWorkspace() {
   const [quote, setQuote] = useState(null);
   const [receipt, setReceipt] = useState(null);
   const [history, setHistory] = useState([]);
+  const [historySearch, setHistorySearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [trackingBusy, setTrackingBusy] = useState(false);
   const [error, setError] = useState("");
@@ -733,6 +734,51 @@ function PayWorkspace() {
   const fundingAmount = Number(quote?.funding_amount || q?.fundingAmount || 0);
   const feeAmount = Number(quote?.fee_amount || q?.feeAmount || 0);
   const exchangeRate = Number(quote?.exchange_rate || q?.exchangeRate || 0);
+  const filteredHistory = history.filter((p) => {
+    const beneficiary = typeof p.beneficiary === "string"
+      ? (() => { try { return JSON.parse(p.beneficiary); } catch { return {}; } })()
+      : (p.beneficiary || {});
+    const haystack = [
+      p.invoice_ref,
+      p.id,
+      beneficiary?.name,
+      p.destination_currency,
+      p.funding_asset,
+      p.status,
+      p.quote?.providerTransferId
+    ].filter(Boolean).join(" ").toLowerCase();
+    return haystack.includes(historySearch.trim().toLowerCase());
+  });
+
+  function exportPayoutCsv() {
+    const rows = filteredHistory.map((p) => {
+      const beneficiary = typeof p.beneficiary === "string"
+        ? (() => { try { return JSON.parse(p.beneficiary); } catch { return {}; } })()
+        : (p.beneficiary || {});
+      return [
+        p.invoice_ref || "",
+        beneficiary?.name || "",
+        p.funding_amount || "",
+        p.funding_asset || "",
+        p.destination_amount || "",
+        p.destination_currency || "",
+        p.quote?.partner || "",
+        p.quote?.providerTransferId || "",
+        p.status || "",
+        p.updated_at || p.created_at || ""
+      ];
+    });
+    const csv = [
+      ["invoice_ref","beneficiary","funding_amount","funding_asset","destination_amount","destination_currency","provider","provider_transfer_id","status","updated_at"],
+      ...rows
+    ].map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "33jack-payout-ledger.csv";
+    link.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <section className="workspace-page unit-workspace">
@@ -868,10 +914,14 @@ function PayWorkspace() {
 
       <div className="card payout-history">
         <div className="card-head">
-          <div><span className="eyebrow">33JACK PAY LEDGER</span><h3>Recent fiat payout simulations</h3></div>
-          <span className="sandbox-badge">NEON PERSISTED</span>
+          <div><span className="eyebrow">33JACK PAY LEDGER</span><h3>Recent fiat payout tests</h3></div>
+          <div className="ledger-tools">
+            <input value={historySearch} onChange={(e) => setHistorySearch(e.target.value)} placeholder="Search ledger"/>
+            <button type="button" className="secondary" onClick={exportPayoutCsv} disabled={!filteredHistory.length}>Export CSV</button>
+            <span className="sandbox-badge">NEON PERSISTED</span>
+          </div>
         </div>
-        {history.length ? history.map((p) => {
+        {filteredHistory.length ? filteredHistory.map((p) => {
           let beneficiary = p.beneficiary || {};
           if (typeof beneficiary === "string") {
             try { beneficiary = JSON.parse(beneficiary); } catch { beneficiary = {}; }
