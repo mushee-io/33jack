@@ -1,7 +1,9 @@
 import { getPayoutProviderReadiness } from "./_lib/payout-provider.js";
+import { getPolicyConfig } from "./_lib/policy.js";
 
 export default async function handler(req, res) {
   const payoutProvider = getPayoutProviderReadiness();
+  const payoutPolicy = getPolicyConfig();
   const checks = {
     ai: Boolean(process.env.GROQ_API_KEY),
     database: Boolean(process.env.DATABASE_URL),
@@ -32,6 +34,14 @@ export default async function handler(req, res) {
     environment: process.env.VERCEL_ENV || process.env.NODE_ENV || "local",
     network: "solana-devnet",
     payoutProvider: payoutProvider.provider,
+    payoutPolicy: {
+      configured: payoutPolicy.configured,
+      allowedCurrencies: payoutPolicy.allowedCurrencies,
+      singleLimitUsd: payoutPolicy.singleLimitUsd,
+      kybRequired: payoutPolicy.kybRequired,
+      kybStatus: payoutPolicy.kybStatus,
+      blockedCountriesConfigured: payoutPolicy.blockedCountries.length > 0
+    },
     mode: coreReady && devnetReady ? "integrated-devnet" : "development",
     checks,
     readiness: {
