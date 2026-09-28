@@ -21,7 +21,7 @@ jobs:
       - name: Check serverless syntax
         run: find api -name '*.js' -print0 | xargs -0 -n1 node --check
       - name: Check Solana runtime import
-        run: node -e "import('@solana/web3.js').then(() => console.log('solana web3 import ok'))"
+        run: node -e "Promise.all([import('@solana/web3.js'), import('@solana/spl-token')]).then(([w]) => { new w.Connection('https://api.devnet.solana.com', 'confirmed'); console.log('solana settlement runtime ok') })"
       - name: Smoke backend flow
         run: npm run test:smoke
       - name: Build frontend
