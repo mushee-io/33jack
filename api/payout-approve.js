@@ -2,6 +2,7 @@ import { addAuditEvent } from "./_lib/db.js";
 import { signPayoutApproval } from "./_lib/payout-approval.js";
 import { getPayoutQuote } from "./_lib/payout-provider.js";
 import { getPayout, savePayout } from "./_lib/payout-store.js";
+import { evaluatePayoutPolicy } from "./_lib/policy.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
@@ -70,6 +71,20 @@ export default async function handler(req, res) {
       // Sandbox rates are deterministic. If the refreshed economics are identical,
       // continue approval in the same request instead of forcing a pointless second click.
       payout = refreshed;
+    }
+
+    const policy = evaluatePayoutPolicy(payout);
+    await addAuditEvent(payout.id, "fiat_payout_policy_checked", "policy-engine", {
+      allowed: policy.allowed,
+      reasons: policy.reasons,
+      config: policy.config
+    });
+    if (!policy.allowed) {
+      return res.status(403).json({
+        error: "Payout blocked by policy",
+        detail: policy.reasons.join("; "),
+        policy
+      });
     }
 
     const approvalToken = signPayoutApproval(payout);
