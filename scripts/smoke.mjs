@@ -164,6 +164,9 @@ assert.equal(fiatSettlement.status, 200);
 assert.equal(fiatSettlement.data.payout.status, "paid_sandbox");
 assert.ok(fiatSettlement.data.receipt.id.startsWith("33J-FIAT-"));
 assert.equal(fiatSettlement.data.receipt.reconciled, true);
+assert.equal(fiatSettlement.data.receipt.beneficiary, "CI Supplier Ltd");
+assert.equal(fiatSettlement.data.receipt.bank, "CI Bank");
+assert.equal(fiatSettlement.data.receipt.account_last4, "5678");
 
 const payoutList = await invoke(payments, "GET", undefined, { kind: "payouts", limit: 10 });
 assert.equal(payoutList.status, 200);
