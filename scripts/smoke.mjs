@@ -4,6 +4,10 @@ import approve from "../api/approve.js";
 import settle from "../api/settle.js";
 import paymentDetail from "../api/payment.js";
 import health from "../api/health.js";
+import payoutQuote from "../api/payout-quote.js";
+import payoutApprove from "../api/payout-approve.js";
+import payoutSettle from "../api/payout-settle.js";
+import payouts from "../api/payouts.js";
 
 function invoke(handler, method = "GET", body = undefined, query = undefined) {
   return new Promise((resolve, reject) => {
@@ -99,9 +103,45 @@ const acknowledgedApproval = await invoke(approve, "POST", {
 assert.equal(acknowledgedApproval.status, 200);
 assert.ok(acknowledgedApproval.data.approvalToken);
 
+const fiatQuote = await invoke(payoutQuote, "POST", {
+  fundingAsset: "USDG",
+  fundingAmount: 10000,
+  destinationCurrency: "CNY",
+  invoiceRef: "33J-CI-FIAT-1",
+  beneficiary: {
+    name: "CI Supplier Ltd",
+    bank_name: "CI Bank",
+    account_last4: "5678",
+    country: "China"
+  }
+});
+assert.equal(fiatQuote.status, 200);
+assert.equal(fiatQuote.data.payout.status, "quoted");
+assert.equal(fiatQuote.data.payout.funding_asset, "USDG");
+assert.equal(fiatQuote.data.payout.destination_currency, "CNY");
+assert.ok(Number(fiatQuote.data.payout.destination_amount) > 0);
+
+const fiatApproval = await invoke(payoutApprove, "POST", {
+  payoutId: fiatQuote.data.payout.id
+});
+assert.equal(fiatApproval.status, 200);
+assert.ok(fiatApproval.data.approvalToken);
+
+const fiatSettlement = await invoke(payoutSettle, "POST", {
+  approvalToken: fiatApproval.data.approvalToken
+});
+assert.equal(fiatSettlement.status, 200);
+assert.equal(fiatSettlement.data.payout.status, "paid_sandbox");
+assert.ok(fiatSettlement.data.receipt.id.startsWith("33J-FIAT-"));
+assert.equal(fiatSettlement.data.receipt.reconciled, true);
+
+const payoutList = await invoke(payouts, "GET", undefined, { limit: 10 });
+assert.equal(payoutList.status, 200);
+assert.ok(payoutList.data.payouts.some((p) => p.id === fiatQuote.data.payout.id));
+
 const status = await invoke(health, "GET");
 assert.equal(status.status, 200);
 assert.equal(status.data.ok, true);
 assert.equal(status.data.checks.secureApprovals, true);
 
-console.log("33jack smoke: fingerprint → analyze → gated approve → settle → idempotency → audit PASS");
+console.log("33jack smoke: invoice settlement + stablecoin→fiat quote→approval→sandbox payout→reconciliation PASS");
