@@ -56,16 +56,18 @@ export default async function handler(req, res) {
       receipt_id: receiptId
     });
 
+    const receiptBeneficiary = approved.beneficiary || payout.beneficiary || {};
+
     await addAuditEvent(payout.id, "fiat_payout_reconciled", "reconciliation-engine", {
       mode: "sandbox",
       receipt_id: receiptId,
       destination_currency: payout.destination_currency,
       destination_amount: Number(payout.destination_amount),
       beneficiary: {
-        name: payout.beneficiary?.name || null,
-        bank_name: payout.beneficiary?.bank_name || null,
-        account_last4: payout.beneficiary?.account_last4 || null,
-        country: payout.beneficiary?.country || null
+        name: receiptBeneficiary.name || null,
+        bank_name: receiptBeneficiary.bank_name || null,
+        account_last4: receiptBeneficiary.account_last4 || null,
+        country: receiptBeneficiary.country || null
       }
     });
 
@@ -77,9 +79,9 @@ export default async function handler(req, res) {
         status: "PAID (SANDBOX)",
         funding: `${payout.funding_amount} ${payout.funding_asset}`,
         delivered: `${payout.destination_amount} ${payout.destination_currency}`,
-        beneficiary: payout.beneficiary?.name || "Beneficiary",
-        bank: payout.beneficiary?.bank_name || "Bank",
-        account_last4: payout.beneficiary?.account_last4 || null,
+        beneficiary: receiptBeneficiary.name || "Beneficiary",
+        bank: receiptBeneficiary.bank_name || "Bank",
+        account_last4: receiptBeneficiary.account_last4 || null,
         reconciled: true
       }
     });
