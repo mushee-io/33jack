@@ -1,0 +1,110 @@
+import postgres from "postgres";
+
+let sql;
+let ready = false;
+
+const memory = globalThis.__33jackPayoutStore || (globalThis.__33jackPayoutStore = []);
+
+function db() {
+  if (!process.env.DATABASE_URL) {
+    const isProduction =
+      process.env.VERCEL_ENV === "production" ||
+      process.env.NODE_ENV === "production";
+    if (isProduction) {
+      throw new Error("DATABASE_URL is required in production.");
+    }
+    return null;
+  }
+  if (!sql) sql = postgres(process.env.DATABASE_URL, { ssl: "require", max: 2 });
+  return sql;
+}
+
+export async function ensurePayoutSchema() {
+  const client = db();
+  if (!client || ready) return Boolean(client);
+  await client`
+    create table if not exists jack_payouts (
+      id text primary key,
+      invoice_ref text,
+      funding_asset text not null,
+      funding_amount numeric not null,
+      destination_currency text not null,
+      destination_amount numeric not null,
+      exchange_rate numeric not null,
+      fee_amount numeric not null,
+      quote jsonb not null,
+      beneficiary jsonb not null,
+      status text not null,
+      receipt_id text,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )
+  `;
+  await client`
+    create index if not exists jack_payouts_status_idx
+    on jack_payouts(status)
+  `;
+  ready = true;
+  return true;
+}
+
+export async function savePayout(payout) {
+  if (!payout?.id) throw new Error("Payout id is required");
+  const client = db();
+  if (!client) {
+    const idx = memory.findIndex((x) => x.id === payout.id);
+    if (idx >= 0) {
+      memory[idx] = { ...memory[idx], ...payout, updated_at: new Date().toISOString() };
+      return memory[idx];
+    }
+    const row = { ...payout, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+    memory.unshift(row);
+    return row;
+  }
+  await ensurePayoutSchema();
+  const [row] = await client`
+    insert into jack_payouts (
+      id, invoice_ref, funding_asset, funding_amount, destination_currency,
+      destination_amount, exchange_rate, fee_amount, quote, beneficiary,
+      status, receipt_id
+    ) values (
+      ${payout.id}, ${payout.invoice_ref || null}, ${payout.funding_asset},
+      ${payout.funding_amount}, ${payout.destination_currency},
+      ${payout.destination_amount}, ${payout.exchange_rate},
+      ${payout.fee_amount}, ${JSON.stringify(payout.quote)}::jsonb,
+      ${JSON.stringify(payout.beneficiary)}::jsonb,
+      ${payout.status}, ${payout.receipt_id || null}
+    )
+    on conflict (id) do update set
+      invoice_ref = excluded.invoice_ref,
+      funding_asset = excluded.funding_asset,
+      funding_amount = excluded.funding_amount,
+      destination_currency = excluded.destination_currency,
+      destination_amount = excluded.destination_amount,
+      exchange_rate = excluded.exchange_rate,
+      fee_amount = excluded.fee_amount,
+      quote = excluded.quote,
+      beneficiary = excluded.beneficiary,
+      status = excluded.status,
+      receipt_id = coalesce(excluded.receipt_id, jack_payouts.receipt_id),
+      updated_at = now()
+    returning *
+  `;
+  return row;
+}
+
+export async function getPayout(id) {
+  if (!id) return null;
+  const client = db();
+  if (!client) return memory.find((x) => x.id === id) || null;
+  await ensurePayoutSchema();
+  const rows = await client`select * from jack_payouts where id = ${String(id)} limit 1`;
+  return rows[0] || null;
+}
+
+export async function listPayouts(limit = 25) {
+  const client = db();
+  if (!client) return memory.slice(0, limit);
+  await ensurePayoutSchema();
+  return client`select * from jack_payouts order by created_at desc limit ${limit}`;
+}
