@@ -18,7 +18,7 @@ This repository is the Colosseum MVP.
 
 - Premium business-finance dashboard with dedicated Pay, Crypto and Invoice operating units
 - Real PDF / image / text invoice analysis through Groq when `GROQ_API_KEY` is configured
-- Built-in structured invoice creator / preview
+- Built-in structured invoice creator with Neon persistence and print/save-PDF workflow
 - Deterministic demo analysis when an AI key is not configured
 - Stored-history duplicate checks when Postgres is configured
 - Risk review for suspicious invoices, missing data and beneficiary changes
@@ -27,6 +27,11 @@ This repository is the Colosseum MVP.
 - Safe simulated settlement when Devnet credentials are absent
 - Payment-state API with Postgres persistence and an in-memory demo fallback
 - Settlement receipt + reconciliation state
+- Wise Sandbox quote + transfer creation with provider transfer IDs
+- Wise transfer polling and signed webhook reconciliation
+- Automatic Wise status mapping and final reconciliation
+- Deterministic payout policy controls for currencies, country blocks, single-payment limits and KYB gating
+- Agent-generated controlled payment proposals that hand off to the human-approved execution flow
 - WhatsApp / Telegram / Web product surfaces
 - Responsive desktop + mobile UI
 - CI build verification
@@ -78,6 +83,12 @@ AI prepares and explains. Deterministic controls constrain money movement.
 | `GET /api/payments` | Retrieve recent payment state |
 | `POST /api/payments` | Persist/update a payment record |
 | `GET /api/health` | Show which runtime integrations are configured |
+| `POST /api/payout-quote` | Create an exact stablecoin-funded fiat payout quote |
+| `POST /api/payout-approve` | Apply policy checks and bind human approval to exact payout terms |
+| `POST /api/payout-settle` | Create the external sandbox transfer |
+| `GET /api/payout-settle?payoutId=...` | Refresh provider state and reconcile external payouts |
+| `POST /api/reconcile?provider=wise` | Verify signed Wise webhooks and reconcile state changes |
+| `POST /api/agent` | Query finance state and prepare controlled payment proposals |
 
 ## Environment
 
@@ -148,16 +159,34 @@ When Postgres state exists, 33jack performs an additional stored-history duplica
 - duplicate and uncertain states should block or escalate
 - production local-currency payouts should use licensed / approved payment partners
 
-## Next milestones
+## Wise Sandbox webhook
 
-- Real FX / payout quote adapters
-- Supplier beneficiary history and independent bank-detail verification
-- Organization roles + multi-user approval policies
-- Idempotency keys and payout state machine
-- Webhook-driven local payout reconciliation
-- WhatsApp and Telegram secure ingestion
-- KYB/KYC and partner-compliance boundary
-- Accounting integrations
+33Jack accepts Wise transfer events at:
+
+`POST /api/reconcile?provider=wise`
+
+Webhook requests are verified with Wise's RSA/SHA-256 `X-Signature-SHA256` signature before any payout state is changed. The handler supports transfer state changes, payout failures and refunds, ignores older out-of-order events, and writes audit events.
+
+For a profile-level sandbox subscription, configure the Wise callback to your deployed HTTPS URL and subscribe to `transfers#state-change` using schema `4.0.0`. Polling remains available as a recovery path.
+
+## Production boundary
+
+The codebase now covers the controlled software workflow through external-provider sandbox reconciliation. Moving real customer funds still requires external production dependencies that cannot be created by this repository alone:
+
+- a licensed stablecoin off-ramp / liquidity partner for the stablecoin-to-fiat funding leg
+- production Wise or another approved payout-provider access
+- business KYB/KYC and sanctions / transaction-monitoring providers
+- an authenticated organization/user model for real multi-user maker-checker approvals
+- production legal, custody and compliance approval for each supported corridor
+
+33Jack intentionally reports production money movement as unavailable until those dependencies are configured and approved.
+
+## Next integrations after provider onboarding
+
+- live stablecoin off-ramp adapter
+- organization authentication + multi-user maker/checker roles
+- secure WhatsApp / Telegram ingestion
+- accounting-system export / sync
 
 ---
 
