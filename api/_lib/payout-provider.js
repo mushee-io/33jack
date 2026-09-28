@@ -352,19 +352,8 @@ export async function executeExternalPayout(payout) {
 }
 
 
-export async function getExternalPayoutStatus(payout) {
-  if (String(payout?.quote?.provider || "") !== "wise_sandbox") return null;
-
-  requireWiseQuoteConfig();
-  const transferId = String(payout?.quote?.providerTransferId || "").trim();
-  if (!transferId) throw new Error("Wise Sandbox transfer ID is missing from payout");
-
-  const transfer = await wiseRequest(`/transfers/${transferId}`, {
-    method: "GET",
-    correlationId: correlationId(`track:${payout.id}:${transferId}`)
-  });
-
-  const providerStatus = String(transfer?.status || "unknown");
+export function mapWiseProviderStatus(providerStatus) {
+  const status = String(providerStatus || "unknown");
   const statusMap = {
     incoming_payment_waiting: "external_created",
     incoming_payment_initiated: "processing_external",
@@ -377,7 +366,6 @@ export async function getExternalPayoutStatus(payout) {
     charged_back: "refunded_external",
     unknown: "attention_external"
   };
-
   const friendlyMap = {
     incoming_payment_waiting: "Funding required",
     incoming_payment_initiated: "Funding in progress",
@@ -390,15 +378,32 @@ export async function getExternalPayoutStatus(payout) {
     charged_back: "Charged back",
     unknown: "Status unknown"
   };
+  return {
+    providerStatus: status,
+    localStatus: statusMap[status] || "attention_external",
+    friendlyStatus: friendlyMap[status] || status,
+    reconciled: status === "outgoing_payment_sent",
+    final: ["outgoing_payment_sent", "cancelled", "funds_refunded", "charged_back"].includes(status)
+  };
+}
 
+export async function getExternalPayoutStatus(payout) {
+  if (String(payout?.quote?.provider || "") !== "wise_sandbox") return null;
+
+  requireWiseQuoteConfig();
+  const transferId = String(payout?.quote?.providerTransferId || "").trim();
+  if (!transferId) throw new Error("Wise Sandbox transfer ID is missing from payout");
+
+  const transfer = await wiseRequest(`/transfers/${transferId}`, {
+    method: "GET",
+    correlationId: correlationId(`track:${payout.id}:${transferId}`)
+  });
+
+  const mapped = mapWiseProviderStatus(transfer?.status);
   return {
     provider: "wise_sandbox",
     transferId,
-    providerStatus,
-    localStatus: statusMap[providerStatus] || "attention_external",
-    friendlyStatus: friendlyMap[providerStatus] || providerStatus,
-    reconciled: providerStatus === "outgoing_payment_sent",
-    final: ["outgoing_payment_sent", "cancelled", "funds_refunded", "charged_back"].includes(providerStatus),
+    ...mapped,
     transfer
   };
 }
