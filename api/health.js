@@ -1,11 +1,17 @@
+import { getPayoutProviderReadiness } from "./_lib/payout-provider.js";
+
 export default async function handler(req, res) {
+  const payoutProvider = getPayoutProviderReadiness();
   const checks = {
     ai: Boolean(process.env.GROQ_API_KEY),
     database: Boolean(process.env.DATABASE_URL),
     secureApprovals: Boolean(process.env.APPROVAL_HMAC_SECRET),
     devnetSigner: Boolean(process.env.SOLANA_DEVNET_PAYER_SECRET_KEY),
     settlementRecipient: Boolean(process.env.SOLANA_SETTLEMENT_RECEIVER),
-    routeQuotes: Boolean(process.env.ROUTE_QUOTES_JSON)
+    routeQuotes: Boolean(process.env.ROUTE_QUOTES_JSON),
+    externalPayoutQuotes: payoutProvider.wiseQuoteReady,
+    externalPayoutTransfer: payoutProvider.wiseTransferReady,
+    externalPayoutFunding: payoutProvider.wiseFundingReady
   };
 
   const coreReady =
@@ -23,11 +29,14 @@ export default async function handler(req, res) {
     aiProvider: process.env.GROQ_API_KEY ? "groq" : "none",
     environment: process.env.VERCEL_ENV || process.env.NODE_ENV || "local",
     network: "solana-devnet",
+    payoutProvider: payoutProvider.provider,
     mode: coreReady && devnetReady ? "integrated-devnet" : "development",
     checks,
     readiness: {
       core: coreReady,
       solanaDevnet: devnetReady,
+      externalPayoutSandbox:
+        payoutProvider.externalSandbox && payoutProvider.wiseTransferReady,
       productionMoneyMovement: false
     },
     note:
