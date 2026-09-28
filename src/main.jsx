@@ -43,6 +43,7 @@ const samplePayments = [
 const nav = [
   ["Overview", LayoutDashboard],
   ["Agent", Bot],
+  ["Channels", MessageCircleMore],
   ["33Jack Pay", Landmark],
   ["33Jack Crypto", Coins],
   ["33Jack Invoice", FilePlus2],
@@ -511,7 +512,7 @@ Please settle this approved supplier invoice.`;
 }
 
 function ChannelPreview() {
-  const [channel, setChannel] = useState("WhatsApp");
+  const [channel, setChannel] = useState("Telegram");
   return (
     <section className="channel-section">
       <div className="section-head">
@@ -544,6 +545,64 @@ function ChannelPreview() {
   );
 }
 
+
+
+function ChannelsWorkspace() {
+  const [health, setHealth] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/health")
+      .then(readApiResponse)
+      .then((data) => setHealth(data))
+      .catch(() => setHealth(null));
+  }, []);
+
+  const telegram = health?.channels?.telegram || {};
+  const ready = Boolean(
+    telegram.configured &&
+    telegram.webhookSecretConfigured
+  );
+
+  return (
+    <section className="workspace-page unit-workspace">
+      <div className="section-head">
+        <div>
+          <span className="eyebrow">33JACK CHANNEL LAYER</span>
+          <h2>Bring the finance operator into messaging.</h2>
+        </div>
+        <p>Channels prepare and review work. Exact approval and money movement remain inside the controlled 33Jack execution flow.</p>
+      </div>
+
+      <div className="channel-integration-grid">
+        <div className="card channel-integration live-panel">
+          <div className="pay-form-head">
+            <div><span className="eyebrow">TELEGRAM</span><h3>Invoice-to-review bot</h3></div>
+            <span className={"sandbox-badge " + (ready ? "live" : "")}>{ready ? "CONFIGURED" : "CODE READY"}</span>
+          </div>
+          <p>Users can upload invoices directly in Telegram. 33Jack downloads the file, runs the existing invoice analysis and risk checks, prepares the route, and sends a secure handoff back to the web approval flow.</p>
+          <div className="rail-badges">
+            <span>/start</span><span>/status</span><span>PDF + images</span><span>Risk review</span><span>Secure handoff</span>
+          </div>
+          <div className="proposal-lines">
+            <p><span>Bot token</span><b>{telegram.configured ? "Configured" : "Needed"}</b></p>
+            <p><span>Webhook secret</span><b>{telegram.webhookSecretConfigured ? "Configured" : "Needed"}</b></p>
+            <p><span>Chat allowlist</span><b>{telegram.chatAllowlistConfigured ? "Restricted" : "Open demo"}</b></p>
+            <p><span>Webhook endpoint</span><b>/api/agent?provider=telegram</b></p>
+          </div>
+        </div>
+
+        <div className="card channel-integration">
+          <span className="eyebrow">NEXT CHANNELS</span>
+          <h3>Same operator, different messaging surfaces.</h3>
+          <p>WhatsApp and WeChat can sit behind the same channel adapter pattern after Telegram is validated.</p>
+          <div className="rail-badges"><span>WhatsApp · next</span><span>WeChat · next</span></div>
+        </div>
+      </div>
+
+      <ChannelPreview/>
+    </section>
+  );
+}
 
 
 function SubunitCards({ onOpen }) {
@@ -1335,7 +1394,7 @@ function App() {
           <div className="search"><Search size={16}/><input placeholder="Search invoices, suppliers, payments…"/></div>
           <div className="header-actions">
             <span className="network-dot">● Solana</span>
-            <button className="secondary"><MessageCircleMore size={17}/> Channels</button>
+            <button className="secondary" onClick={() => setActive("Channels")}><MessageCircleMore size={17}/> Channels</button>
             <button className="primary" onClick={() => setFlow(true)}><Plus size={17}/> New payment</button>
           </div>
         </header>
@@ -1425,6 +1484,8 @@ function App() {
           <footer><Logo/><p>Autonomous cross-border finance for global businesses.</p><span>Colosseum build · Solana</span></footer>
           </> : active === "Agent" ? (
             <AgentWorkspace/>
+          ) : active === "Channels" ? (
+            <ChannelsWorkspace/>
           ) : active === "33Jack Pay" ? (
             <PayWorkspace seed={invoiceSeed} onNewPayment={() => setFlow(true)}/>
           ) : active === "33Jack Crypto" ? (
