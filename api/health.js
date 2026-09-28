@@ -1,9 +1,11 @@
 import { getPayoutProviderReadiness } from "./_lib/payout-provider.js";
 import { getPolicyConfig } from "./_lib/policy.js";
+import { telegramReadiness } from "./_lib/telegram.js";
 
 export default async function handler(req, res) {
   const payoutProvider = getPayoutProviderReadiness();
   const payoutPolicy = getPolicyConfig();
+  const telegram = telegramReadiness();
   const checks = {
     ai: Boolean(process.env.GROQ_API_KEY),
     database: Boolean(process.env.DATABASE_URL),
@@ -34,6 +36,9 @@ export default async function handler(req, res) {
     environment: process.env.VERCEL_ENV || process.env.NODE_ENV || "local",
     network: "solana-devnet",
     payoutProvider: payoutProvider.provider,
+    channels: {
+      telegram
+    },
     payoutPolicy: {
       configured: payoutPolicy.configured,
       allowedCurrencies: payoutPolicy.allowedCurrencies,
