@@ -837,8 +837,11 @@ function PayWorkspace() {
             <div className="payout-history-row" key={p.id}>
               <span><b>{beneficiary?.name || "Beneficiary"}</b><small>{p.invoice_ref || p.id}</small></span>
               <span><b>{Number(p.funding_amount).toLocaleString()} {p.funding_asset}</b><small>funding</small></span>
-              <span><b>{Number(p.destination_amount).toLocaleString()} {p.destination_currency}</b><small>destination</small></span>
-              <span className="status-raw">{String(p.status || "").replaceAll("_", " ")}</span>
+              <span><b>{Number(p.destination_amount).toLocaleString()} {p.destination_currency}</b><small>{p.quote?.partner || "33Jack payout rail"}</small></span>
+              <span className="status-raw">
+                {String(p.status || "").replaceAll("_", " ")}
+                {p.quote?.providerTransferId ? <small> · #{p.quote.providerTransferId}</small> : null}
+              </span>
             </div>
           );
         }) : <div className="empty-records">No fiat payout simulations yet.</div>}
