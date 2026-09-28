@@ -6,17 +6,24 @@
 
 **invoice → AI checks → route proposal → exact approval → settlement → reconciliation**
 
+The product is now organized into three operating units behind one agent:
+
+- **33Jack Pay** — stablecoin-funded local-currency payouts
+- **33Jack Crypto** — stablecoin-to-stablecoin vendor / contractor payouts
+- **33Jack Invoice** — invoice creation, extraction, verification and payment-state intelligence
+
 This repository is the Colosseum MVP.
 
 ## What works now
 
-- Premium business-finance dashboard
-- Real PDF / image / text invoice analysis through the OpenAI Responses API when `OPENAI_API_KEY` is configured
+- Premium business-finance dashboard with dedicated Pay, Crypto and Invoice operating units
+- Real PDF / image / text invoice analysis through Groq when `GROQ_API_KEY` is configured
+- Built-in structured invoice creator / preview
 - Deterministic demo analysis when an AI key is not configured
 - Stored-history duplicate checks when Postgres is configured
 - Risk review for suspicious invoices, missing data and beneficiary changes
 - Exact human approval step before execution
-- Solana Devnet USDC transfer adapter
+- Solana Devnet USDG Token-2022 transfer adapter
 - Safe simulated settlement when Devnet credentials are absent
 - Payment-state API with Postgres persistence and an in-memory demo fallback
 - Settlement receipt + reconciliation state
@@ -53,7 +60,7 @@ Web / WhatsApp / Telegram
             ↓
  Exact Human Approval
             ↓
-     USDC on Solana
+     USDG on Solana
             ↓
  Licensed payout / FX rails
             ↓
@@ -67,7 +74,7 @@ AI prepares and explains. Deterministic controls constrain money movement.
 | Endpoint | Purpose |
 | --- | --- |
 | `POST /api/analyze` | Analyse an invoice and prepare a structured payment/risk record |
-| `POST /api/settle` | Execute Devnet USDC settlement when configured; otherwise return a safe demo settlement |
+| `POST /api/settle` | Execute Devnet USDG settlement when configured; otherwise return a safe demo settlement |
 | `GET /api/payments` | Retrieve recent payment state |
 | `POST /api/payments` | Persist/update a payment record |
 | `GET /api/health` | Show which runtime integrations are configured |
@@ -77,13 +84,14 @@ AI prepares and explains. Deterministic controls constrain money movement.
 Copy `.env.example` to `.env.local`.
 
 ```bash
-OPENAI_API_KEY=
-OPENAI_INVOICE_MODEL=gpt-5.6-luna
+GROQ_API_KEY=
+GROQ_VISION_MODEL=qwen/qwen3.8-27b
+GROQ_AGENT_MODEL=openai/gpt-oss-20b
 
 DATABASE_URL=
 
 SOLANA_RPC_URL=https://api.devnet.solana.com
-SOLANA_DEVNET_USDC_MINT=
+SOLANA_DEVNET_USDG_MINT=4F6PM96JJxngmHnZLBh9n58RH4aTVNWvDs2nuwrT5BP7
 SOLANA_SETTLEMENT_RECEIVER=
 SOLANA_DEVNET_PAYER_SECRET_KEY=
 ```
@@ -118,7 +126,7 @@ After importing the repository, add the environment variables above in Vercel an
 
 ## Devnet settlement
 
-The settlement endpoint creates the recipient associated token account idempotently, transfers a configured SPL token with 6 decimals, confirms the transaction on Solana Devnet and returns a Solana Explorer URL.
+The settlement endpoint creates the recipient Token-2022 associated token account idempotently, reads the USDG mint decimals, transfers the approved amount, confirms the transaction on Solana Devnet and returns a Solana Explorer URL.
 
 If the signer, mint, or recipient is not configured, the endpoint intentionally returns `mode: "demo"` and **does not move tokens**.
 
