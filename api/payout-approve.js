@@ -9,6 +9,16 @@ export default async function handler(req, res) {
   try {
     let payout = await getPayout(req.body?.payoutId);
     if (!payout) return res.status(404).json({ error: "Payout not found" });
+
+    if (payout.status === "approved") {
+      return res.status(200).json({
+        payout,
+        approvalToken: signPayoutApproval(payout),
+        mode: process.env.APPROVAL_HMAC_SECRET ? "secure" : "demo",
+        idempotent: true
+      });
+    }
+
     if (payout.status !== "quoted") {
       return res.status(409).json({ error: "Payout is not awaiting approval", detail: payout.status });
     }
