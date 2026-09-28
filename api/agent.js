@@ -22,6 +22,49 @@ function compactPayment(p) {
   };
 }
 
+function findReferencedPayment(message, payments = []) {
+  const text = String(message || "").toLowerCase();
+  return payments.find((p) =>
+    [p.id, p.invoice]
+      .filter(Boolean)
+      .some((value) => text.includes(String(value).toLowerCase()))
+  ) || null;
+}
+
+function buildProposal(message, payments = []) {
+  const lower = String(message || "").toLowerCase();
+  const wantsPreparation = /\b(prepare|pay|execute|settle|send)\b/.test(lower);
+  if (!wantsPreparation) return null;
+
+  const payment = findReferencedPayment(message, payments);
+  if (!payment) return null;
+
+  const stablecoins = new Set(["USDG", "USDC", "USDT"]);
+  const unit = stablecoins.has(String(payment.destination_currency || "").toUpperCase())
+    ? "33Jack Crypto"
+    : "33Jack Pay";
+  const flags = [];
+  if (payment.risk?.duplicate) flags.push("duplicate");
+  if (payment.risk?.beneficiary_changed) flags.push("beneficiary_changed");
+  if (payment.risk?.suspicious) flags.push("suspicious");
+  if (Array.isArray(payment.risk?.missing_fields)) flags.push(...payment.risk.missing_fields);
+
+  return {
+    paymentId: payment.id,
+    invoice: payment.invoice,
+    supplier: payment.supplier,
+    unit,
+    sourceCurrency: payment.source_currency,
+    sourceAmount: payment.source_amount,
+    destinationCurrency: payment.destination_currency,
+    destinationAmount: payment.destination_amount,
+    route: payment.route,
+    status: payment.status,
+    blockers: Array.from(new Set(flags.filter(Boolean))),
+    readyForStructuredFlow: flags.length === 0 && ["analyzed", "failed"].includes(String(payment.status || ""))
+  };
+}
+
 function fallbackAnswer(message, payments) {
   const risky = payments.filter((p) =>
     p.risk?.duplicate ||
@@ -65,6 +108,7 @@ export default async function handler(req, res) {
     listBeneficiaries(50)
   ]);
   const payments = paymentRows.map(compactPayment);
+  const proposal = buildProposal(message, payments);
   const beneficiaries = beneficiaryRows.map((b) => ({
     supplier: b.supplier_name,
     destination_currency: b.destination_currency,
@@ -76,7 +120,10 @@ export default async function handler(req, res) {
 
   if (!process.env.GROQ_API_KEY) {
     return res.status(200).json({
-      answer: fallbackAnswer(message, payments),
+      answer: proposal
+        ? `I prepared a controlled ${proposal.unit} proposal for ${proposal.invoice || proposal.paymentId}. ${proposal.blockers.length ? "It still has blockers: " + proposal.blockers.join(", ") + "." : "It is ready to enter the structured approval flow."}`
+        : fallbackAnswer(message, payments),
+      proposal,
       mode: "deterministic",
       canExecute: false
     });
@@ -121,6 +168,7 @@ Be concise and operational.`
 
     return res.status(200).json({
       answer: response.output_text || fallbackAnswer(message, payments),
+      proposal,
       mode: "groq",
       canExecute: false
     });
