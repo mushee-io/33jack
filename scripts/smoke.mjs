@@ -8,6 +8,7 @@ import health from "../api/health.js";
 import payoutQuote from "../api/payout-quote.js";
 import payoutApprove from "../api/payout-approve.js";
 import payoutSettle from "../api/payout-settle.js";
+import { getPayout, savePayout } from "../api/_lib/payout-store.js";
 
 function invoke(handler, method = "GET", body = undefined, query = undefined) {
   return new Promise((resolve, reject) => {
@@ -143,6 +144,18 @@ const fiatApproval = await invoke(payoutApprove, "POST", {
 });
 assert.equal(fiatApproval.status, 200);
 assert.ok(fiatApproval.data.approvalToken);
+
+// Mimic Postgres JSONB returning beneficiary keys in a different order.
+const approvedStoredPayout = await getPayout(fiatQuote.data.payout.id);
+await savePayout({
+  ...approvedStoredPayout,
+  beneficiary: {
+    country: approvedStoredPayout.beneficiary.country,
+    account_last4: approvedStoredPayout.beneficiary.account_last4,
+    bank_name: approvedStoredPayout.beneficiary.bank_name,
+    name: approvedStoredPayout.beneficiary.name
+  }
+});
 
 const fiatSettlement = await invoke(payoutSettle, "POST", {
   approvalToken: fiatApproval.data.approvalToken
