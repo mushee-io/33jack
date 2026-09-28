@@ -58,7 +58,12 @@ export default async function handler(req, res) {
       });
     }
 
-    if (payout.status !== "approved") {
+    const retryingExternalSubmission =
+      provider !== "internal_sandbox" &&
+      payout.status === "processing_external" &&
+      !payout.receipt_id;
+
+    if (payout.status !== "approved" && !retryingExternalSubmission) {
       return res.status(409).json({ error: "Payout is not approved", detail: payout.status });
     }
 
