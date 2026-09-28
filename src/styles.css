@@ -883,3 +883,7 @@ button:disabled {
 .agent-proposal{margin-top:10px;padding:12px;border:1px solid rgba(0,0,0,.1);border-radius:12px;display:flex;flex-direction:column;gap:7px;background:rgba(255,255,255,.6)}
 .agent-proposal small{display:block;color:var(--muted,#6b7280)}
 .agent-proposal button{align-self:flex-start;margin-top:2px}
+
+
+.ledger-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ledger-tools input{min-width:180px;padding:9px 11px;border:1px solid rgba(0,0,0,.1);border-radius:10px;background:transparent}
