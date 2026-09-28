@@ -247,8 +247,13 @@ export function getPayoutProviderReadiness() {
   const wiseTransferReady = Boolean(
     wiseQuoteReady && process.env.WISE_RECIPIENT_ACCOUNT_ID
   );
-  const wiseFundingReady = Boolean(
+  const wiseBalanceConfigured = Boolean(
     wiseTransferReady && process.env.WISE_BALANCE_ID
+  );
+  const wiseAutoFundingEnabled =
+    String(process.env.WISE_AUTO_FUND || "").toLowerCase() === "true";
+  const wiseFundingReady = Boolean(
+    wiseBalanceConfigured && wiseAutoFundingEnabled
   );
 
   return {
@@ -256,6 +261,8 @@ export function getPayoutProviderReadiness() {
     externalSandbox: provider === "wise_sandbox",
     wiseQuoteReady,
     wiseTransferReady,
+    wiseBalanceConfigured,
+    wiseAutoFundingEnabled,
     wiseFundingReady
   };
 }
@@ -282,19 +289,37 @@ export async function executeExternalPayout(payout) {
   });
 
   let funding = null;
+  let fundingError = null;
   const balanceId = process.env.WISE_BALANCE_ID;
-  if (balanceId && transfer?.id) {
-    funding = await wiseRequest(
-      `/profiles/${profileId}/transfers/${transfer.id}/payments`,
-      {
-        method: "POST",
-        correlationId: correlationId(`fund:${payout.id}`),
-        body: {
-          type: "BALANCE",
-          balanceId: Number(balanceId)
+  const autoFundingEnabled =
+    String(process.env.WISE_AUTO_FUND || "").toLowerCase() === "true";
+
+  if (balanceId && autoFundingEnabled && transfer?.id) {
+    try {
+      funding = await wiseRequest(
+        `/profiles/${profileId}/transfers/${transfer.id}/payments`,
+        {
+          method: "POST",
+          correlationId: correlationId(`fund:${payout.id}`),
+          body: {
+            type: "BALANCE",
+            balanceId: Number(balanceId)
+          }
         }
+      );
+    } catch (error) {
+      // UK/EEA personal API tokens commonly require SCA/manual funding.
+      // A funding 403 must not erase a transfer that Wise already created.
+      if (Number(error?.status) === 403) {
+        fundingError = {
+          status: 403,
+          code: "manual_or_sca_required",
+          message: error?.message || "Wise requires manual/SCA funding"
+        };
+      } else {
+        throw error;
       }
-    );
+    }
   }
 
   let latest = transfer;
@@ -313,9 +338,14 @@ export async function executeExternalPayout(payout) {
     provider: "wise_sandbox",
     transferId: String(transfer?.id || ""),
     providerStatus: String(latest?.status || transfer?.status || "created"),
-    fundingStatus: funding?.status || null,
+    fundingStatus:
+      funding?.status ||
+      (fundingError ? "MANUAL_OR_SCA_REQUIRED" : "NOT_ATTEMPTED"),
+    fundingError,
     balanceTransactionId: funding?.balanceTransactionId || null,
     funded: funding?.status === "COMPLETED",
+    manualFundingRequired:
+      Boolean(fundingError) || !autoFundingEnabled,
     customerTransactionId: transactionId,
     rawTransfer: latest
   };
