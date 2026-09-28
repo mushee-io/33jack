@@ -512,7 +512,7 @@ Please settle this approved supplier invoice.`;
 }
 
 function ChannelPreview() {
-  const [channel, setChannel] = useState("Telegram");
+  const [channel, setChannel] = useState("WhatsApp");
   return (
     <section className="channel-section">
       <div className="section-head">
@@ -557,8 +557,14 @@ function ChannelsWorkspace() {
       .catch(() => setHealth(null));
   }, []);
 
+  const whatsapp = health?.channels?.whatsapp || {};
   const telegram = health?.channels?.telegram || {};
-  const ready = Boolean(
+  const whatsappReady = Boolean(
+    whatsapp.configured &&
+    whatsapp.verifyTokenConfigured &&
+    whatsapp.appSecretConfigured
+  );
+  const telegramReady = Boolean(
     telegram.configured &&
     telegram.webhookSecretConfigured
   );
@@ -568,34 +574,37 @@ function ChannelsWorkspace() {
       <div className="section-head">
         <div>
           <span className="eyebrow">33JACK CHANNEL LAYER</span>
-          <h2>Bring the finance operator into messaging.</h2>
+          <h2>WhatsApp first. Same controlled finance operator.</h2>
         </div>
-        <p>Channels prepare and review work. Exact approval and money movement remain inside the controlled 33Jack execution flow.</p>
+        <p>Messaging channels prepare and review work. Exact approval and money movement remain inside the controlled 33Jack execution flow.</p>
       </div>
 
       <div className="channel-integration-grid">
         <div className="card channel-integration live-panel">
           <div className="pay-form-head">
-            <div><span className="eyebrow">TELEGRAM</span><h3>Invoice-to-review bot</h3></div>
-            <span className={"sandbox-badge " + (ready ? "live" : "")}>{ready ? "CONFIGURED" : "CODE READY"}</span>
+            <div><span className="eyebrow">WHATSAPP CLOUD API</span><h3>Invoice-to-review business channel</h3></div>
+            <span className={"sandbox-badge " + (whatsappReady ? "live" : "")}>{whatsappReady ? "CONFIGURED" : "CODE READY"}</span>
           </div>
-          <p>Users can upload invoices directly in Telegram. 33Jack downloads the file, runs the existing invoice analysis and risk checks, prepares the route, and sends a secure handoff back to the web approval flow.</p>
+          <p>Users can send an invoice directly in WhatsApp. 33Jack retrieves the media from Meta, runs the existing invoice extraction and deterministic risk checks, prepares the payment review, and sends a secure handoff back to the web approval flow.</p>
           <div className="rail-badges">
-            <span>/start</span><span>/status</span><span>PDF + images</span><span>Risk review</span><span>Secure handoff</span>
+            <span>PDF + JPG + PNG</span><span>STATUS</span><span>Risk review</span><span>Secure handoff</span><span>Meta webhook verification</span>
           </div>
           <div className="proposal-lines">
-            <p><span>Bot token</span><b>{telegram.configured ? "Configured" : "Needed"}</b></p>
-            <p><span>Webhook secret</span><b>{telegram.webhookSecretConfigured ? "Configured" : "Needed"}</b></p>
-            <p><span>Chat allowlist</span><b>{telegram.chatAllowlistConfigured ? "Restricted" : "Open demo"}</b></p>
-            <p><span>Webhook endpoint</span><b>/api/agent?provider=telegram</b></p>
+            <p><span>Cloud API credentials</span><b>{whatsapp.configured ? "Configured" : "Needed"}</b></p>
+            <p><span>Webhook verify token</span><b>{whatsapp.verifyTokenConfigured ? "Configured" : "Needed"}</b></p>
+            <p><span>App secret signature check</span><b>{whatsapp.appSecretConfigured ? "Configured" : "Needed"}</b></p>
+            <p><span>Graph API</span><b>{whatsapp.graphVersion || "v26.0"}</b></p>
+            <p><span>Webhook endpoint</span><b>/api/agent?provider=whatsapp</b></p>
           </div>
         </div>
 
         <div className="card channel-integration">
-          <span className="eyebrow">NEXT CHANNELS</span>
-          <h3>Same operator, different messaging surfaces.</h3>
-          <p>WhatsApp and WeChat can sit behind the same channel adapter pattern after Telegram is validated.</p>
-          <div className="rail-badges"><span>WhatsApp · next</span><span>WeChat · next</span></div>
+          <div className="pay-form-head">
+            <div><span className="eyebrow">TELEGRAM</span><h3>Second channel</h3></div>
+            <span className={"sandbox-badge " + (telegramReady ? "live" : "")}>{telegramReady ? "CONFIGURED" : "CODE READY"}</span>
+          </div>
+          <p>The Telegram adapter remains available, but WhatsApp is now the flagship channel for the 33Jack demo.</p>
+          <div className="rail-badges"><span>Telegram · second</span><span>WeChat · third</span></div>
         </div>
       </div>
 
