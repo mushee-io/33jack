@@ -183,6 +183,7 @@ process.env.WISE_SANDBOX_TOKEN = "ci-wise-token";
 process.env.WISE_PROFILE_ID = "12345";
 process.env.WISE_RECIPIENT_ACCOUNT_ID = "67890";
 delete process.env.WISE_BALANCE_ID;
+let wiseMockStatus = "incoming_payment_waiting";
 
 globalThis.fetch = async (url, options = {}) => {
   const path = String(url);
@@ -207,7 +208,7 @@ globalThis.fetch = async (url, options = {}) => {
   if (path.endsWith("/transfers/16521632") && options.method === "GET") {
     return new Response(JSON.stringify({
       id: 16521632,
-      status: "incoming_payment_waiting"
+      status: wiseMockStatus
     }), { status: 200, headers: { "Content-Type": "application/json" } });
   }
   if (path.includes("/transfers/16521632/payments") && options.method === "POST") {
@@ -295,6 +296,19 @@ assert.equal(
   externalSettlementResponse.data.provider.fundingStatus,
   "MANUAL_OR_SCA_REQUIRED"
 );
+
+wiseMockStatus = "outgoing_payment_sent";
+const trackedExternal = await invoke(
+  payoutSettle,
+  "GET",
+  undefined,
+  { payoutId: externalSettlementResponse.data.payout.id }
+);
+assert.equal(trackedExternal.status, 200);
+assert.equal(trackedExternal.data.payout.status, "reconciled_external");
+assert.equal(trackedExternal.data.tracking.providerStatus, "outgoing_payment_sent");
+assert.equal(trackedExternal.data.receipt.reconciled, true);
+assert.equal(trackedExternal.data.receipt.status, "PAID (WISE SANDBOX)");
 
 globalThis.fetch = originalFetch;
 process.env.PAYOUT_PROVIDER = "internal_sandbox";
