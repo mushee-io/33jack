@@ -2,8 +2,18 @@ import { addAuditEvent } from "./_lib/db.js";
 import { verifyPayoutApproval } from "./_lib/payout-approval.js";
 import { getPayout, savePayout } from "./_lib/payout-store.js";
 
-function same(a, b) {
-  return JSON.stringify(a) === JSON.stringify(b);
+function sameValue(a, b) {
+  if (typeof a === "number" || typeof b === "number") {
+    return Number(a) === Number(b);
+  }
+  return String(a ?? "") === String(b ?? "");
+}
+
+function sameBeneficiary(stored = {}, approved = {}) {
+  const keys = ["name", "bank_name", "account_last4", "country"];
+  return keys.every((key) =>
+    String(stored?.[key] ?? "").trim() === String(approved?.[key] ?? "").trim()
+  );
 }
 
 export default async function handler(req, res) {
@@ -21,17 +31,17 @@ export default async function handler(req, res) {
       return res.status(409).json({ error: "Payout is not approved", detail: payout.status });
     }
 
-    const checks = [
-      [payout.funding_asset, approved.fundingAsset],
-      [Number(payout.funding_amount), Number(approved.fundingAmount)],
-      [payout.destination_currency, approved.destinationCurrency],
-      [Number(payout.destination_amount), Number(approved.destinationAmount)],
-      [Number(payout.exchange_rate), Number(approved.exchangeRate)],
-      [Number(payout.fee_amount), Number(approved.feeAmount)],
-      [payout.beneficiary, approved.beneficiary]
-    ];
-    if (checks.some(([stored, signed]) => !same(stored, signed))) {
-      throw new Error("Approved payout no longer matches the stored quote");
+    const termsMatch =
+      sameValue(payout.funding_asset, approved.fundingAsset) &&
+      sameValue(Number(payout.funding_amount), Number(approved.fundingAmount)) &&
+      sameValue(payout.destination_currency, approved.destinationCurrency) &&
+      sameValue(Number(payout.destination_amount), Number(approved.destinationAmount)) &&
+      sameValue(Number(payout.exchange_rate), Number(approved.exchangeRate)) &&
+      sameValue(Number(payout.fee_amount), Number(approved.feeAmount)) &&
+      sameBeneficiary(payout.beneficiary, approved.beneficiary);
+
+    if (!termsMatch) {
+      throw new Error("Approved payout terms changed before settlement");
     }
 
     await savePayout({ ...payout, status: "processing" });
