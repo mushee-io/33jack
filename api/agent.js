@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { listBeneficiaries, listPayments } from "./_lib/db.js";
+import { handleTelegramWebhook } from "./_lib/telegram.js";
 
 function compactPayment(p) {
   return {
@@ -97,6 +98,11 @@ function fallbackAnswer(message, payments) {
 }
 
 export default async function handler(req, res) {
+  if (String(req.query?.provider || "").toLowerCase() === "telegram") {
+    if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
+    return handleTelegramWebhook(req, res);
+  }
+
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
   const message = String(req.body?.message || "").trim();
