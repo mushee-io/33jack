@@ -1,7 +1,7 @@
 import { addAuditEvent } from "./_lib/db.js";
 import { verifyPayoutApproval } from "./_lib/payout-approval.js";
 import { getPayout, savePayout } from "./_lib/payout-store.js";
-import { executeExternalPayout } from "./_lib/payout-provider.js";
+import { executeExternalPayout, getExternalPayoutStatus } from "./_lib/payout-provider.js";
 
 function sameValue(a, b) {
   if (typeof a === "number" || typeof b === "number") {
@@ -17,10 +17,113 @@ function sameBeneficiary(stored = {}, approved = {}) {
   );
 }
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
+function externalReceipt(payout, tracking = null) {
+  const beneficiary = payout?.beneficiary || {};
+  const providerStatus =
+    tracking?.providerStatus ||
+    payout?.quote?.providerStatus ||
+    "unknown";
+  const reconciled =
+    tracking?.reconciled === true ||
+    payout?.status === "reconciled_external";
 
+  return {
+    id:
+      payout?.receipt_id ||
+      (payout?.quote?.providerTransferId
+        ? `WISE-${payout.quote.providerTransferId}`
+        : null),
+    status: reconciled
+      ? "PAID (WISE SANDBOX)"
+      : tracking?.friendlyStatus
+        ? tracking.friendlyStatus.toUpperCase()
+        : "TRACKING (WISE SANDBOX)",
+    funding: `${payout?.funding_amount} ${payout?.funding_asset}`,
+    delivered: `${payout?.destination_amount} ${payout?.destination_currency}`,
+    beneficiary: beneficiary?.name || "Beneficiary",
+    bank: beneficiary?.bank_name || "Bank",
+    account_last4: beneficiary?.account_last4 || null,
+    reconciled,
+    provider: payout?.quote?.partner || "Wise Sandbox",
+    provider_status: providerStatus,
+    provider_transfer_id: payout?.quote?.providerTransferId || null
+  };
+}
+
+export default async function handler(req, res) {
   try {
+    if (req.method === "GET") {
+      const payout = await getPayout(req.query?.payoutId);
+      if (!payout) return res.status(404).json({ error: "Payout not found" });
+
+      const provider = String(payout.quote?.provider || "internal_sandbox");
+      if (provider === "internal_sandbox") {
+        return res.status(200).json({
+          payout,
+          receipt: payout.receipt_id
+            ? {
+                id: payout.receipt_id,
+                status: payout.status === "paid_sandbox" ? "PAID (SANDBOX)" : payout.status,
+                funding: `${payout.funding_amount} ${payout.funding_asset}`,
+                delivered: `${payout.destination_amount} ${payout.destination_currency}`,
+                beneficiary: payout.beneficiary?.name || "Beneficiary",
+                bank: payout.beneficiary?.bank_name || "Bank",
+                account_last4: payout.beneficiary?.account_last4 || null,
+                reconciled: payout.status === "paid_sandbox"
+              }
+            : null
+        });
+      }
+
+      const tracking = await getExternalPayoutStatus(payout);
+      const previousProviderStatus = payout.quote?.providerStatus || null;
+      const providerQuote = {
+        ...payout.quote,
+        providerStatus: tracking.providerStatus,
+        providerStatusLabel: tracking.friendlyStatus,
+        providerStatusCheckedAt: new Date().toISOString()
+      };
+
+      const updated = await savePayout({
+        ...payout,
+        quote: providerQuote,
+        status: tracking.localStatus
+      });
+
+      if (previousProviderStatus !== tracking.providerStatus) {
+        await addAuditEvent(payout.id, "fiat_payout_provider_status", "wise-status-tracker", {
+          provider: "wise_sandbox",
+          transfer_id: tracking.transferId,
+          previous_status: previousProviderStatus,
+          provider_status: tracking.providerStatus,
+          local_status: tracking.localStatus
+        });
+      }
+
+      if (
+        tracking.reconciled &&
+        payout.status !== "reconciled_external"
+      ) {
+        await addAuditEvent(payout.id, "fiat_payout_reconciled", "reconciliation-engine", {
+          mode: "wise_sandbox",
+          receipt_id: updated.receipt_id,
+          transfer_id: tracking.transferId,
+          provider_status: tracking.providerStatus,
+          destination_currency: updated.destination_currency,
+          destination_amount: Number(updated.destination_amount)
+        });
+      }
+
+      return res.status(200).json({
+        payout: updated,
+        tracking,
+        receipt: externalReceipt(updated, tracking)
+      });
+    }
+
+    if (req.method !== "POST") {
+      return res.status(405).json({ error: "GET or POST only" });
+    }
     const approved = verifyPayoutApproval(req.body?.approvalToken);
     const payout = await getPayout(approved.payoutId);
     if (!payout) return res.status(404).json({ error: "Payout not found" });
