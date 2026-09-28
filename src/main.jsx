@@ -580,7 +580,7 @@ function SubunitCards({ onOpen }) {
   );
 }
 
-function PayWorkspace() {
+function PayWorkspace({ seed }) {
   const [form, setForm] = useState({
     fundingAsset: "USDG",
     fundingAmount: "10000",
@@ -598,6 +598,25 @@ function PayWorkspace() {
   const [busy, setBusy] = useState(false);
   const [trackingBusy, setTrackingBusy] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!seed?.id) return;
+    const currency = String(seed.source_currency || seed.destination_currency || "USD").toUpperCase();
+    setForm((current) => ({
+      ...current,
+      fundingAsset: "USDG",
+      fundingAmount: String(seed.source_amount || ""),
+      destinationCurrency: ["USD", "GBP", "CNY", "INR"].includes(currency) ? currency : "USD",
+      invoiceRef: seed.invoice_number || seed.invoice_name || seed.id,
+      beneficiaryName: seed.supplier || "",
+      bankName: "",
+      accountLast4: "",
+      country: ""
+    }));
+    setQuote(null);
+    setReceipt(null);
+    setError("Invoice loaded. Complete the beneficiary bank fields before requesting the payout quote.");
+  }, [seed?.id]);
 
   async function loadHistory() {
     try {
@@ -944,7 +963,7 @@ function PayWorkspace() {
 }
 
 
-function CryptoWorkspace({ onNewPayment }) {
+function CryptoWorkspace({ onNewPayment, seed }) {
   return (
     <section className="workspace-page unit-workspace">
       <div className="unit-hero">
@@ -952,7 +971,8 @@ function CryptoWorkspace({ onNewPayment }) {
           <span className="eyebrow">33JACK CRYPTO · STABLECOIN → STABLECOIN</span>
           <h2>Stablecoin payouts for vendors, contractors and crypto-native teams.</h2>
           <p>Upload the obligation, verify the destination wallet, approve the exact payment and settle with an auditable onchain receipt.</p>
-          <button className="primary" onClick={onNewPayment}><Coins size={16}/> New stablecoin payment</button>
+          {seed && <div className="pay-success">Loaded {seed.invoice_number || seed.id} · {seed.supplier} · {seed.source_currency} {Number(seed.source_amount || 0).toLocaleString()}</div>}
+          <button className="primary" onClick={onNewPayment}><Coins size={16}/>{seed ? " Continue invoice payment" : " New stablecoin payment"}</button>
         </div>
         <div className="unit-flow">
           <span>Invoice</span><ArrowRight/><span>Risk + approval</span><ArrowRight/><span>USDG</span><ArrowRight/><span>Solana wallet</span>
@@ -975,7 +995,7 @@ function CryptoWorkspace({ onNewPayment }) {
   );
 }
 
-function InvoiceWorkspace({ onNewPayment }) {
+function InvoiceWorkspace({ onNewPayment, onUseInvoice }) {
   const [draft, setDraft] = useState({
     supplier: "Nova Systems Ltd",
     customer: "Mushee Labs",
@@ -1024,7 +1044,10 @@ function InvoiceWorkspace({ onNewPayment }) {
 
   async function useInPaymentFlow() {
     const invoice = saved || await saveInvoice();
-    if (invoice) onNewPayment?.();
+    if (invoice) {
+      if (onUseInvoice) onUseInvoice(invoice);
+      else onNewPayment?.();
+    }
   }
 
   function printInvoice() {
@@ -1237,6 +1260,7 @@ function RecordsWorkspace({ type, payments, onNewPayment }) {
 function App() {
   const [active, setActive] = useState("Overview");
   const [flow, setFlow] = useState(false);
+  const [invoiceSeed, setInvoiceSeed] = useState(null);
   const [livePayments, setLivePayments] = useState([]);
   const [persistence, setPersistence] = useState("loading");
 
@@ -1255,6 +1279,16 @@ function App() {
   useEffect(() => {
     refreshPayments();
   }, []);
+
+  function routeInvoiceToPayment(invoice) {
+    setInvoiceSeed(invoice);
+    const currency = String(invoice?.source_currency || invoice?.destination_currency || "").toUpperCase();
+    if (["USDG", "USDC", "USDT"].includes(currency)) {
+      setActive("33Jack Crypto");
+    } else {
+      setActive("33Jack Pay");
+    }
+  }
 
   const dashboardPayments = livePayments.length
     ? livePayments.map((p) => ({
@@ -1392,11 +1426,11 @@ function App() {
           </> : active === "Agent" ? (
             <AgentWorkspace/>
           ) : active === "33Jack Pay" ? (
-            <PayWorkspace onNewPayment={() => setFlow(true)}/>
+            <PayWorkspace seed={invoiceSeed} onNewPayment={() => setFlow(true)}/>
           ) : active === "33Jack Crypto" ? (
-            <CryptoWorkspace onNewPayment={() => setFlow(true)}/>
+            <CryptoWorkspace seed={invoiceSeed} onNewPayment={() => setFlow(true)}/>
           ) : active === "33Jack Invoice" ? (
-            <InvoiceWorkspace onNewPayment={() => setFlow(true)}/>
+            <InvoiceWorkspace onUseInvoice={routeInvoiceToPayment} onNewPayment={() => setFlow(true)}/>
           ) : (
             <RecordsWorkspace type={active} payments={livePayments} onNewPayment={() => setFlow(true)}/>
           )}
