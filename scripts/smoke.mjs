@@ -121,6 +121,23 @@ assert.equal(fiatQuote.data.payout.funding_asset, "USDG");
 assert.equal(fiatQuote.data.payout.destination_currency, "CNY");
 assert.ok(Number(fiatQuote.data.payout.destination_amount) > 0);
 
+const refreshedFiatQuote = await invoke(payoutQuote, "POST", {
+  payoutId: fiatQuote.data.payout.id,
+  fundingAsset: "USDG",
+  fundingAmount: 10000,
+  destinationCurrency: "CNY",
+  invoiceRef: "33J-CI-FIAT-1",
+  beneficiary: {
+    name: "CI Supplier Ltd",
+    bank_name: "CI Bank",
+    account_last4: "5678",
+    country: "China"
+  }
+});
+assert.equal(refreshedFiatQuote.status, 200);
+assert.equal(refreshedFiatQuote.data.payout.id, fiatQuote.data.payout.id);
+assert.equal(refreshedFiatQuote.data.payout.status, "quoted");
+
 const fiatApproval = await invoke(payoutApprove, "POST", {
   payoutId: fiatQuote.data.payout.id
 });
@@ -138,6 +155,10 @@ assert.equal(fiatSettlement.data.receipt.reconciled, true);
 const payoutList = await invoke(payments, "GET", undefined, { kind: "payouts", limit: 10 });
 assert.equal(payoutList.status, 200);
 assert.ok(payoutList.data.payouts.some((p) => p.id === fiatQuote.data.payout.id));
+assert.equal(
+  payoutList.data.payouts.filter((p) => p.invoice_ref === "33J-CI-FIAT-1").length,
+  1
+);
 
 const status = await invoke(health, "GET");
 assert.equal(status.status, 200);
