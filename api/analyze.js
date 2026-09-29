@@ -1,5 +1,9 @@
 import crypto from "node:crypto";
 import OpenAI from "openai";
+// Keep the PDF.js worker in the Vercel serverless bundle. PDF.js uses a fake
+// worker under Node and loads this file at runtime; without a static reference
+// Vercel file tracing can omit it from the function package.
+import "pdfjs-dist/legacy/build/pdf.worker.js";
 import {
   addAuditEvent,
   findPaymentByInvoiceHash,
@@ -89,6 +93,7 @@ async function extractPdfText(fileData) {
   const bytes = Uint8Array.from(Buffer.from(String(fileData || ""), "base64"));
   const task = getDocument({
     data: bytes,
+    disableWorker: true,
     useWorkerFetch: false,
     isEvalSupported: false,
     useSystemFonts: true
