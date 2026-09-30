@@ -1,6 +1,14 @@
 import crypto from "node:crypto";
-import { listPayments } from "./db.js";
-import { signTelegramLaunch } from "./telegram-auth.js";
+import {
+  addAuditEvent,
+  getPayment,
+  listAuditEvents,
+  listPayments
+} from "./db.js";
+import {
+  signTelegramLaunch,
+  verifyTelegramApproval
+} from "./telegram-auth.js";
 
 const MAX_INVOICE_BYTES = Math.floor(3.2 * 1024 * 1024);
 
@@ -190,6 +198,96 @@ function invoiceSummary(analysis = {}) {
     "",
     "AI prepared the instruction. Exact approval and money movement stay inside the controlled 33Jack approval flow."
   ].join("\n");
+}
+
+export async function handleTelegramMiniAppAction(req, res) {
+  const body = req.body || {};
+  if (String(body.action || "").toLowerCase() !== "receipt") {
+    return res.status(400).json({ error: "Unsupported Telegram Mini App action" });
+  }
+
+  try {
+    const paymentId = String(body.paymentId || "").trim();
+    if (!paymentId) return res.status(400).json({ error: "paymentId is required" });
+
+    const auth = verifyTelegramApproval({
+      initData: body.telegramInitData,
+      launchToken: body.telegramLaunchToken,
+      paymentId
+    });
+
+    const payment = await getPayment(paymentId);
+    if (!payment) return res.status(404).json({ error: "Payment not found" });
+
+    if (!["settled_demo", "settled_devnet"].includes(String(payment.status || ""))) {
+      return res.status(409).json({
+        error: "Payment is not settled yet",
+        detail: `Current status is ${payment.status || "unknown"}`
+      });
+    }
+
+    const existingEvents = await listAuditEvents(payment.id, 100);
+    const alreadySent = existingEvents.some((event) =>
+      event.event_type === "telegram_receipt_sent" &&
+      String(event.metadata?.telegram_user_id || "") === String(auth.user.id)
+    );
+
+    if (alreadySent) {
+      return res.status(200).json({ ok: true, idempotent: true });
+    }
+
+    const settlementAmount = Number(payment.approval?.amount_usdg || 0);
+    const statusLabel = payment.status === "settled_devnet"
+      ? "Settled on Solana Devnet"
+      : "Settled in controlled demo";
+    const invoiceAmount = payment.source_amount && payment.source_currency
+      ? `${payment.source_currency} ${Number(payment.source_amount).toLocaleString()}`
+      : "—";
+
+    const lines = [
+      "33Jack payment complete",
+      "",
+      `Supplier: ${payment.supplier || "—"}`,
+      `Invoice: ${payment.invoice_number || payment.invoice_name || payment.id}`,
+      `Invoice amount: ${invoiceAmount}`,
+      settlementAmount > 0 ? `Settlement amount: ${settlementAmount} USDG` : null,
+      `Destination: ${payment.destination_amount || payment.destination_currency || "—"}`,
+      `Status: ${statusLabel}`,
+      "Reconciled: ✓",
+      payment.settlement_signature ? `Reference: ${payment.settlement_signature}` : null
+    ].filter(Boolean);
+
+    const base = appBaseUrl(req);
+    const buttons = [];
+    if (payment.status === "settled_devnet" && payment.settlement_signature) {
+      buttons.push([{
+        text: "View Solana transaction",
+        url: `https://explorer.solana.com/tx/${payment.settlement_signature}?cluster=devnet`
+      }]);
+    }
+    if (base) {
+      buttons.push([{ text: "Open 33Jack", url: base }]);
+    }
+
+    await sendMessage(
+      auth.user.id,
+      lines.join("\n"),
+      buttons.length ? { reply_markup: { inline_keyboard: buttons } } : {}
+    );
+
+    await addAuditEvent(payment.id, "telegram_receipt_sent", `telegram-user:${auth.user.id}`, {
+      telegram_user_id: String(auth.user.id),
+      status: payment.status,
+      settlement_signature: payment.settlement_signature || null
+    });
+
+    return res.status(200).json({ ok: true, idempotent: false });
+  } catch (error) {
+    return res.status(400).json({
+      error: "Telegram receipt rejected",
+      detail: error?.message || "Unknown Telegram receipt error"
+    });
+  }
 }
 
 export async function handleTelegramWebhook(req, res) {
