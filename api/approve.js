@@ -50,7 +50,9 @@ export default async function handler(req, res) {
       sourceAmount: payment.source_amount,
       destinationAmount: payment.destination_amount,
       route: payment.route,
-      amountUsdg
+      amountUsdg,
+      channel: telegramAuth ? "telegram-mini-app" : "web",
+      telegramUserId: telegramAuth ? String(telegramAuth.user.id) : null
     });
 
     await transitionPayment(
