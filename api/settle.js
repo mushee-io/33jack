@@ -1,12 +1,16 @@
 import { verifyApproval } from "./_lib/approval.js";
 import {
   addAuditEvent,
+  getBeneficiaryControl,
   getPayment,
+  getTelegramWorkspaceMembership,
+  roleCan,
   transitionPayment,
   upsertBeneficiary
 } from "./_lib/db.js";
 import { PAYMENT_STATUS } from "./_lib/state.js";
 import { sendTelegramPaymentReceipt } from "./_lib/telegram.js";
+import { sendWhatsAppPaymentReceipt } from "./_lib/whatsapp.js";
 
 const DEVNET = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
 
@@ -37,6 +41,63 @@ async function maybeSendTelegramReceipt(paymentId, approved) {
     }).catch(() => {});
     return { attempted: true, sent: false, error: error?.message || "Unknown error" };
   }
+}
+
+async function maybeSendWhatsAppReceipt(paymentId, approved) {
+  if (
+    String(approved?.channel || "") !== "whatsapp-web" ||
+    !approved?.whatsappUserId
+  ) return { attempted: false, sent: false };
+
+  try {
+    const fresh = await getPayment(paymentId);
+    if (!fresh) return { attempted: true, sent: false };
+    const result = await sendWhatsAppPaymentReceipt({
+      payment: fresh,
+      whatsappUserId: approved.whatsappUserId,
+      base: String(process.env.PUBLIC_APP_URL || process.env.APP_BASE_URL || "").replace(/\/$/, "")
+    });
+    return {
+      attempted: true,
+      sent: Boolean(result?.ok),
+      idempotent: Boolean(result?.idempotent),
+      suppressed: Boolean(result?.suppressed)
+    };
+  } catch (error) {
+    await addAuditEvent(paymentId, "whatsapp_receipt_failed", "settlement-engine", {
+      whatsapp_user_id: String(approved.whatsappUserId || ""),
+      error: error?.message || "Unknown WhatsApp receipt error"
+    }).catch(() => {});
+    return { attempted: true, sent: false, error: error?.message || "Unknown error" };
+  }
+}
+
+async function assertChannelAuthorization(payment, approved) {
+  if (String(approved?.channel || "") !== "whatsapp-web") return null;
+  const userId = String(approved.whatsappUserId || "").trim();
+  if (!userId) throw new Error("WhatsApp approval identity is missing");
+
+  const membership = await getTelegramWorkspaceMembership(`whatsapp:${userId}`);
+  if (!membership || !roleCan(membership.member.role, "approve")) {
+    throw new Error("WhatsApp approver no longer has payment approval permission");
+  }
+  if (
+    !approved.workspaceId ||
+    String(membership.workspace.id) !== String(approved.workspaceId) ||
+    String(payment.workspace_id || "") !== String(approved.workspaceId)
+  ) {
+    throw new Error("WhatsApp payment workspace authorization changed");
+  }
+
+  const control = await getBeneficiaryControl(
+    membership.workspace.id,
+    payment.supplier,
+    payment.destination_currency
+  );
+  if (control?.status === "blocked") {
+    throw new Error(control.note || "Beneficiary is blocked by workspace policy");
+  }
+  return membership;
 }
 
 function sameText(a, b) {
@@ -137,6 +198,8 @@ export default async function handler(req, res) {
     payment = await getPayment(paymentId);
     if (!payment) return res.status(404).json({ error: "Payment not found" });
 
+    await assertChannelAuthorization(payment, approved);
+
     const hasDevnetConfig = Boolean(
       process.env.SOLANA_DEVNET_PAYER_SECRET_KEY &&
       process.env.SOLANA_SETTLEMENT_RECEIVER
@@ -145,6 +208,8 @@ export default async function handler(req, res) {
     if (!hasDevnetConfig) {
       if ([PAYMENT_STATUS.SETTLED_DEMO, PAYMENT_STATUS.SETTLED_DEVNET].includes(payment.status) && payment.settlement_signature) {
         const isDevnet = payment.status === PAYMENT_STATUS.SETTLED_DEVNET;
+        const telegramReceipt = await maybeSendTelegramReceipt(payment.id, approved);
+        const whatsappReceipt = await maybeSendWhatsAppReceipt(payment.id, approved);
         return res.status(200).json({
           mode: isDevnet ? "devnet" : "demo",
           signature: payment.settlement_signature,
@@ -152,7 +217,9 @@ export default async function handler(req, res) {
             ? `https://explorer.solana.com/tx/${payment.settlement_signature}?cluster=devnet`
             : null,
           idempotent: true,
-          status: payment.status
+          status: payment.status,
+          telegramReceipt,
+          whatsappReceipt
         });
       }
 
@@ -194,6 +261,7 @@ export default async function handler(req, res) {
       });
 
       const telegramReceipt = await maybeSendTelegramReceipt(payment.id, approved);
+      const whatsappReceipt = await maybeSendWhatsAppReceipt(payment.id, approved);
 
       return res.status(200).json({
         mode: "demo",
@@ -201,6 +269,7 @@ export default async function handler(req, res) {
         explorer: null,
         idempotent: false,
         telegramReceipt,
+        whatsappReceipt,
         message:
           "Approval was verified and state was reconciled, but Devnet signer/recipient are not configured, so no tokens were moved."
       });
@@ -236,7 +305,17 @@ export default async function handler(req, res) {
 
     const existingResponse = await existingSettlementResponse(payment, connection);
     if (existingResponse) {
-      return res.status(existingResponse.pending ? 202 : 200).json(existingResponse);
+      const telegramReceipt = existingResponse.pending
+        ? { attempted: false, sent: false }
+        : await maybeSendTelegramReceipt(payment.id, approved);
+      const whatsappReceipt = existingResponse.pending
+        ? { attempted: false, sent: false }
+        : await maybeSendWhatsAppReceipt(payment.id, approved);
+      return res.status(existingResponse.pending ? 202 : 200).json({
+        ...existingResponse,
+        telegramReceipt,
+        whatsappReceipt
+      });
     }
 
     if (payment.status !== PAYMENT_STATUS.APPROVED) {
@@ -374,13 +453,15 @@ export default async function handler(req, res) {
     });
 
     const telegramReceipt = await maybeSendTelegramReceipt(payment.id, approved);
+    const whatsappReceipt = await maybeSendWhatsAppReceipt(payment.id, approved);
 
     return res.status(200).json({
       mode: "devnet",
       signature: networkSignature,
       explorer,
       idempotent: false,
-      telegramReceipt
+      telegramReceipt,
+      whatsappReceipt
     });
   } catch (error) {
     console.error("settlement failed", error);
