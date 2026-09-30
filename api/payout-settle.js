@@ -1,4 +1,4 @@
-import { addAuditEvent } from "./_lib/db.js";
+import { addAuditEvent, getBeneficiaryControl, getTelegramWorkspaceMembership, roleCan } from "./_lib/db.js";
 import { verifyPayoutApproval } from "./_lib/payout-approval.js";
 import { getPayout, savePayout } from "./_lib/payout-store.js";
 import { executeExternalPayout, getExternalPayoutStatus } from "./_lib/payout-provider.js";
@@ -128,6 +128,31 @@ export default async function handler(req, res) {
     const payout = await getPayout(approved.payoutId);
     if (!payout) return res.status(404).json({ error: "Payout not found" });
 
+    if (String(approved.channel || "") === "telegram-mini-app") {
+      const membership = await getTelegramWorkspaceMembership(approved.telegramUserId);
+      if (!membership || !roleCan(membership.member.role, "approve")) {
+        return res.status(403).json({ error: "Telegram approver no longer has payout approval permission" });
+      }
+      if (
+        !approved.workspaceId ||
+        String(membership.workspace.id) !== String(approved.workspaceId) ||
+        String(payout.workspace_id || "") !== String(approved.workspaceId)
+      ) {
+        return res.status(403).json({ error: "Payout workspace authorization changed" });
+      }
+      const control = await getBeneficiaryControl(
+        membership.workspace.id,
+        payout.beneficiary?.name,
+        payout.destination_currency
+      );
+      if (control?.status === "blocked") {
+        return res.status(403).json({
+          error: "Beneficiary was blocked after approval",
+          detail: control.note || payout.beneficiary?.name || "Blocked beneficiary"
+        });
+      }
+    }
+
     const provider = String(payout.quote?.provider || "internal_sandbox");
 
     if (payout.status === "paid_sandbox" && payout.receipt_id) {
@@ -182,7 +207,8 @@ export default async function handler(req, res) {
         payout.quote?.providerQuoteId || "",
         approved.providerQuoteId || ""
       ) &&
-      sameBeneficiary(payout.beneficiary, approved.beneficiary);
+      sameBeneficiary(payout.beneficiary, approved.beneficiary) &&
+      sameValue(payout.workspace_id || "", approved.workspaceId || payout.workspace_id || "");
 
     if (!termsMatch) {
       throw new Error("Approved payout terms changed before settlement");
