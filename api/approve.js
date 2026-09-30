@@ -4,9 +4,11 @@ import {
   addAuditEvent,
   getOrCreateTelegramWorkspace,
   getPayment,
+  getTelegramWorkspaceMembership,
   roleCan,
   transitionPayment
 } from "./_lib/db.js";
+import { verifyWhatsAppLaunch } from "./_lib/whatsapp-auth.js";
 import {
   PAYMENT_STATUS,
   assertApprovalAllowed,
@@ -28,8 +30,11 @@ export default async function handler(req, res) {
     const acknowledgements = body.acknowledgements || {};
     let approvalActor = "human-approver";
     let telegramAuth = null;
+    let whatsappAuth = null;
     let workspaceContext = null;
-    if (String(body.channel || "").toLowerCase() === "telegram") {
+    const approvalChannel = String(body.channel || "").toLowerCase();
+
+    if (approvalChannel === "telegram") {
       telegramAuth = verifyTelegramApproval({
         initData: body.telegramInitData,
         launchToken: body.telegramLaunchToken,
@@ -43,6 +48,25 @@ export default async function handler(req, res) {
         return res.status(403).json({ error: "Payment is not available to this workspace" });
       }
       approvalActor = `telegram-user:${telegramAuth.user.id}`;
+    } else if (approvalChannel === "whatsapp") {
+      whatsappAuth = verifyWhatsAppLaunch(body.whatsappLaunchToken, payment.id);
+      workspaceContext = await getTelegramWorkspaceMembership(
+        `whatsapp:${whatsappAuth.whatsappUserId}`
+      );
+      if (!workspaceContext) {
+        return res.status(403).json({ error: "WhatsApp workspace membership is missing" });
+      }
+      if (!roleCan(workspaceContext.member.role, "approve")) {
+        return res.status(403).json({ error: "Your workspace role cannot approve payments" });
+      }
+      if (
+        !payment.workspace_id ||
+        String(payment.workspace_id) !== String(workspaceContext.workspace.id) ||
+        String(whatsappAuth.workspaceId) !== String(workspaceContext.workspace.id)
+      ) {
+        return res.status(403).json({ error: "Payment is not available to this WhatsApp workspace" });
+      }
+      approvalActor = `whatsapp-user:${whatsappAuth.whatsappUserId}`;
     }
     assertApprovalAllowed(payment, acknowledgements);
 
@@ -61,8 +85,13 @@ export default async function handler(req, res) {
       destinationAmount: payment.destination_amount,
       route: payment.route,
       amountUsdg,
-      channel: telegramAuth ? "telegram-mini-app" : "web",
+      channel: telegramAuth
+        ? "telegram-mini-app"
+        : whatsappAuth
+          ? "whatsapp-web"
+          : "web",
       telegramUserId: telegramAuth ? String(telegramAuth.user.id) : null,
+      whatsappUserId: whatsappAuth ? String(whatsappAuth.whatsappUserId) : null,
       workspaceId: workspaceContext?.workspace?.id || payment.workspace_id || null,
       approverRole: workspaceContext?.member?.role || null
     });
@@ -84,8 +113,13 @@ export default async function handler(req, res) {
         provided_acknowledgements: acknowledgements,
         approval_expires_at: signed.payload.expiresAt,
         amount_usdg: amountUsdg,
-        channel: telegramAuth ? "telegram-mini-app" : "web",
+        channel: telegramAuth
+          ? "telegram-mini-app"
+          : whatsappAuth
+            ? "whatsapp-web"
+            : "web",
         telegram_user_id: telegramAuth ? String(telegramAuth.user.id) : null,
+        whatsapp_user_id: whatsappAuth ? String(whatsappAuth.whatsappUserId) : null,
         workspace_id: workspaceContext?.workspace?.id || payment.workspace_id || null,
         approver_role: workspaceContext?.member?.role || null
       }
@@ -97,8 +131,13 @@ export default async function handler(req, res) {
       source_currency: payment.source_currency,
       destination_currency: payment.destination_currency,
       expires_at: signed.payload.expiresAt,
-      channel: telegramAuth ? "telegram-mini-app" : "web",
+      channel: telegramAuth
+        ? "telegram-mini-app"
+        : whatsappAuth
+          ? "whatsapp-web"
+          : "web",
       telegram_user_id: telegramAuth ? String(telegramAuth.user.id) : null,
+      whatsapp_user_id: whatsappAuth ? String(whatsappAuth.whatsappUserId) : null,
       workspace_id: workspaceContext?.workspace?.id || payment.workspace_id || null,
       approver_role: workspaceContext?.member?.role || null
     });
