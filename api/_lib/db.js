@@ -232,6 +232,7 @@ export async function savePayment(payment) {
         beneficiary: payment.beneficiary === undefined ? existing.beneficiary : payment.beneficiary,
         approval: payment.approval === undefined ? existing.approval : payment.approval,
         invoice_meta: payment.invoice_meta === undefined ? existing.invoice_meta : payment.invoice_meta,
+        workspace_id: payment.workspace_id === undefined ? existing.workspace_id : payment.workspace_id,
         updated_at: new Date().toISOString()
       };
       return memory.payments[idx];
@@ -266,7 +267,7 @@ export async function savePayment(payment) {
       ${payment.route || null},
       ${routeOptions}::jsonb, ${beneficiary}::jsonb, ${risk}::jsonb,
       ${payment.status || "analyzed"}, ${payment.settlement_signature || null},
-      ${approval}::jsonb, ${invoiceMeta}::jsonb
+      ${approval}::jsonb, ${invoiceMeta}::jsonb, ${payment.workspace_id || null}
     )
     on conflict (id) do update set
       invoice_name = coalesce(excluded.invoice_name, jack_payments.invoice_name),
@@ -285,6 +286,7 @@ export async function savePayment(payment) {
       settlement_signature = coalesce(excluded.settlement_signature, jack_payments.settlement_signature),
       approval = coalesce(excluded.approval, jack_payments.approval),
       invoice_meta = coalesce(excluded.invoice_meta, jack_payments.invoice_meta),
+      workspace_id = coalesce(excluded.workspace_id, jack_payments.workspace_id),
       updated_at = now()
     returning *
   `;
@@ -314,6 +316,37 @@ export async function listPayments(limit = 25) {
   if (!client) return memory.payments.slice(0, limit);
   await ensureSchema();
   return client`select * from jack_payments order by created_at desc limit ${limit}`;
+}
+
+
+export async function listPaymentsByWorkspace(workspaceId, limit = 100) {
+  if (!workspaceId) return [];
+  const client = db();
+  if (!client) {
+    return memory.payments
+      .filter((p) => String(p.workspace_id || "") === String(workspaceId))
+      .slice(0, limit);
+  }
+  await ensureSchema();
+  return client`
+    select * from jack_payments
+    where workspace_id = ${String(workspaceId)}
+    order by created_at desc
+    limit ${Math.min(Math.max(Number(limit) || 100, 1), 250)}
+  `;
+}
+
+export async function assignPaymentWorkspace(paymentId, workspaceId) {
+  const payment = await getPayment(paymentId);
+  if (!payment) throw new Error("Payment not found");
+  if (payment.workspace_id && String(payment.workspace_id) !== String(workspaceId)) {
+    throw new Error("Payment already belongs to another workspace");
+  }
+  return savePayment({
+    ...payment,
+    workspace_id: String(workspaceId),
+    status: payment.status
+  });
 }
 
 export async function addAuditEvent(paymentId, eventType, actor = "system", data = {}) {
