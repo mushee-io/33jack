@@ -229,7 +229,7 @@ export async function handleTelegramMiniAppAction(req, res) {
     const existingEvents = await listAuditEvents(payment.id, 100);
     const alreadySent = existingEvents.some((event) =>
       event.event_type === "telegram_receipt_sent" &&
-      String(event.metadata?.telegram_user_id || "") === String(auth.user.id)
+      String(event.data?.telegram_user_id || "") === String(auth.user.id)
     );
 
     if (alreadySent) {
