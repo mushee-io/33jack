@@ -174,7 +174,7 @@ class AppErrorBoundary extends React.Component {
   }
 }
 
-function PaymentFlow({ close, onComplete }) {
+function PaymentFlow({ close, onComplete, initialPayment = null, channelContext = null }) {
   const [file, setFile] = useState(null);
   const [fileName, setFileName] = useState("");
   const [stage, setStage] = useState("upload");
@@ -188,6 +188,14 @@ function PaymentFlow({ close, onComplete }) {
     beneficiary_changed: false,
     suspicious: false
   });
+
+  useEffect(() => {
+    if (!initialPayment?.id) return;
+    setAnalysis(initialPayment);
+    setFileName(initialPayment.invoice_name || initialPayment.invoice_number || "WhatsApp invoice");
+    setCorridor(String(initialPayment.destination_currency || "USD").toUpperCase());
+    setStage("review");
+  }, [initialPayment]);
 
   const result = useMemo(() => {
     if (!analysis) {
@@ -297,7 +305,13 @@ Please settle this approved supplier invoice.`;
         body: JSON.stringify({
           paymentId,
           acknowledgements,
-          amountUsdg: 1
+          amountUsdg: 1,
+          ...(channelContext?.channel === "whatsapp"
+            ? {
+                channel: "whatsapp",
+                whatsappLaunchToken: channelContext.token
+              }
+            : {})
         })
       });
       const approval = await readApiResponse(approvalResponse);
@@ -1331,6 +1345,8 @@ function App() {
   const [invoiceSeed, setInvoiceSeed] = useState(null);
   const [livePayments, setLivePayments] = useState([]);
   const [persistence, setPersistence] = useState("loading");
+  const [externalReview, setExternalReview] = useState(null);
+  const [externalReviewError, setExternalReviewError] = useState("");
 
   async function refreshPayments() {
     try {
@@ -1346,6 +1362,42 @@ function App() {
 
   useEffect(() => {
     refreshPayments();
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const channel = String(params.get("channel") || "").toLowerCase();
+    const paymentId = params.get("paymentId");
+    const token = params.get("waToken");
+
+    if (channel !== "whatsapp" || !paymentId || !token) return;
+
+    let cancelled = false;
+    setExternalReviewError("");
+    fetch(
+      `/api/whatsapp-review?paymentId=${encodeURIComponent(paymentId)}&token=${encodeURIComponent(token)}`
+    )
+      .then(async (response) => {
+        const data = await readApiResponse(response);
+        if (!response.ok) {
+          throw new Error(data.detail || data.error || "WhatsApp review link could not be verified");
+        }
+        return data;
+      })
+      .then((data) => {
+        if (cancelled) return;
+        setExternalReview({
+          payment: data.payment,
+          workspace: data.workspace,
+          context: { channel: "whatsapp", token }
+        });
+        setFlow(true);
+      })
+      .catch((error) => {
+        if (!cancelled) setExternalReviewError(error.message || "WhatsApp review link failed");
+      });
+
+    return () => { cancelled = true; };
   }, []);
 
   function routeInvoiceToPayment(invoice) {
@@ -1409,6 +1461,11 @@ function App() {
         </header>
 
         <div className="content">
+          {externalReviewError && (
+            <div style={{marginBottom:16,padding:"12px 14px",border:"1px solid rgba(255,111,125,.25)",borderRadius:12,color:"#ff8994",fontSize:12}}>
+              {externalReviewError}
+            </div>
+          )}
           {active === "Overview" ? <>
           <section className="hero">
             <div>
@@ -1506,7 +1563,17 @@ function App() {
           )}
         </div>
       </main>
-      {flow && <PaymentFlow close={() => setFlow(false)} onComplete={refreshPayments}/>}
+      {flow && (
+        <PaymentFlow
+          initialPayment={externalReview?.payment || null}
+          channelContext={externalReview?.context || null}
+          close={() => {
+            setFlow(false);
+            setExternalReview(null);
+          }}
+          onComplete={refreshPayments}
+        />
+      )}
     </div>
   );
 }
