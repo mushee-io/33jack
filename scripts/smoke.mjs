@@ -498,6 +498,12 @@ globalThis.fetch = async (url, options = {}) => {
       result: { message_id: 1 }
     }), { status: 200, headers: { "Content-Type": "application/json" } });
   }
+  if (value.includes("/setChatMenuButton")) {
+    return new Response(JSON.stringify({ ok: true, result: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
   return telegramFetch(url, options);
 };
 
@@ -576,6 +582,21 @@ const telegramReceiptReplay = await invoke(
 );
 assert.equal(telegramReceiptReplay.status, 200);
 assert.equal(telegramReceiptReplay.data.idempotent, true);
+
+const telegramDashboard = await invoke(
+  agent,
+  "POST",
+  {
+    action: "dashboard",
+    telegramInitData
+  },
+  { provider: "telegram-miniapp" }
+);
+assert.equal(telegramDashboard.status, 200);
+assert.equal(telegramDashboard.data.ok, true);
+assert.equal(String(telegramDashboard.data.user.id), "123");
+assert.ok(telegramDashboard.data.payments.some((p) => p.id === first.data.id));
+assert.ok(telegramDashboard.data.history.some((e) => e.payment_id === first.data.id));
 
 globalThis.fetch = telegramFetch;
 delete process.env.TELEGRAM_BOT_TOKEN;
