@@ -1375,7 +1375,7 @@ function App() {
     let cancelled = false;
     setExternalReviewError("");
     fetch(
-      `/api/whatsapp-review?paymentId=${encodeURIComponent(paymentId)}&token=${encodeURIComponent(token)}`
+      `/api/agent?provider=whatsapp-review&paymentId=${encodeURIComponent(paymentId)}&token=${encodeURIComponent(token)}`
     )
       .then(async (response) => {
         const data = await readApiResponse(response);
