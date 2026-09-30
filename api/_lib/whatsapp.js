@@ -3,8 +3,13 @@ import {
   addAuditEvent,
   assignPaymentWorkspace,
   getOrCreateTelegramWorkspace,
+  getPayment,
+  getTelegramPreferences,
+  getTelegramWorkspaceMembership,
+  listAuditEvents,
   listPaymentsByWorkspace
 } from "./db.js";
+import { signWhatsAppLaunch } from "./whatsapp-auth.js";
 
 const MAX_INVOICE_BYTES = Math.floor(3.2 * 1024 * 1024);
 
@@ -311,6 +316,70 @@ function extractMessages(payload = {}) {
   return messages;
 }
 
+export async function sendWhatsAppPaymentReceipt({ payment, whatsappUserId, base = "" }) {
+  if (!payment?.id) throw new Error("Payment is required for WhatsApp receipt");
+  if (!whatsappUserId) throw new Error("WhatsApp user is required for receipt");
+
+  const identity = `whatsapp:${whatsappUserId}`;
+  const membership = await getTelegramWorkspaceMembership(identity);
+  if (!membership || String(payment.workspace_id || "") !== String(membership.workspace.id)) {
+    throw new Error("Payment is not available to this WhatsApp workspace");
+  }
+
+  const preferences = await getTelegramPreferences(membership.workspace.id, identity);
+  if (preferences.receipt_messages === false) {
+    return { ok: true, idempotent: false, suppressed: true };
+  }
+
+  if (!["settled_demo", "settled_devnet"].includes(String(payment.status || ""))) {
+    throw new Error(`Payment is not settled yet (current status: ${payment.status || "unknown"})`);
+  }
+
+  const events = await listAuditEvents(payment.id, 100);
+  const alreadySent = events.some((event) =>
+    event.event_type === "whatsapp_receipt_sent" &&
+    String(event.data?.whatsapp_user_id || "") === String(whatsappUserId)
+  );
+  if (alreadySent) return { ok: true, idempotent: true };
+
+  const amount = payment.source_amount && payment.source_currency
+    ? `${payment.source_currency} ${Number(payment.source_amount).toLocaleString()}`
+    : "—";
+  const status = payment.status === "settled_devnet"
+    ? "Settled on Solana Devnet"
+    : "Settled in controlled demo";
+
+  const lines = [
+    "33Jack payment complete",
+    "",
+    `Supplier: ${payment.supplier || "—"}`,
+    `Invoice: ${payment.invoice_number || payment.invoice_name || payment.id}`,
+    `Invoice amount: ${amount}`,
+    `Destination: ${payment.destination_amount || payment.destination_currency || "—"}`,
+    `Status: ${status}`,
+    "Reconciled: ✓",
+    payment.settlement_signature ? `Reference: ${payment.settlement_signature}` : null
+  ].filter(Boolean);
+
+  if (payment.status === "settled_devnet" && payment.settlement_signature) {
+    lines.push(
+      "",
+      `Solana Explorer: https://explorer.solana.com/tx/${payment.settlement_signature}?cluster=devnet`
+    );
+  }
+  if (base) lines.push("", `Open 33Jack: ${base}`);
+
+  await sendText(whatsappUserId, lines.join("\n"));
+  await addAuditEvent(payment.id, "whatsapp_receipt_sent", `whatsapp-user:${whatsappUserId}`, {
+    whatsapp_user_id: String(whatsappUserId),
+    workspace_id: membership.workspace.id,
+    status: payment.status,
+    settlement_signature: payment.settlement_signature || null
+  });
+
+  return { ok: true, idempotent: false };
+}
+
 export async function handleWhatsAppWebhook(req, res, rawBody) {
   if (req.method === "GET") {
     const verification = verifyWhatsAppChallenge(req);
@@ -430,8 +499,13 @@ export async function handleWhatsAppWebhook(req, res, rawBody) {
           }
         );
 
+        const launchToken = signWhatsAppLaunch({
+          paymentId: analysis.id,
+          whatsappUserId: from,
+          workspaceId: workspace.id
+        });
         const reviewUrl = base
-          ? `${base}/?channel=whatsapp&paymentId=${encodeURIComponent(analysis.id)}`
+          ? `${base}/?channel=whatsapp&paymentId=${encodeURIComponent(analysis.id)}&waToken=${encodeURIComponent(launchToken)}`
           : base;
         await sendReviewLink(from, invoiceSummary(analysis), reviewUrl);
         continue;
