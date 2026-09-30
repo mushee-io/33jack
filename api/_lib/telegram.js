@@ -7,7 +7,8 @@ import {
 } from "./db.js";
 import {
   signTelegramLaunch,
-  verifyTelegramApproval
+  verifyTelegramApproval,
+  verifyTelegramInitData
 } from "./telegram-auth.js";
 
 const MAX_INVOICE_BYTES = Math.floor(3.2 * 1024 * 1024);
@@ -200,6 +201,172 @@ function invoiceSummary(analysis = {}) {
   ].join("\n");
 }
 
+
+function dashboardUrl(base) {
+  return base ? `${base}/telegram-dashboard.html` : "";
+}
+
+async function ensureTelegramMenuButton(base) {
+  const url = dashboardUrl(base);
+  if (!url) return false;
+  try {
+    await telegramApi("setChatMenuButton", {
+      menu_button: {
+        type: "web_app",
+        text: "Open 33Jack",
+        web_app: { url }
+      }
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function telegramUserIdFromEvent(event) {
+  const fromData = event?.data?.telegram_user_id;
+  if (fromData != null) return String(fromData);
+  const actor = String(event?.actor || "");
+  const match = actor.match(/^telegram-user:(.+)$/);
+  return match?.[1] || "";
+}
+
+async function telegramScopedData(userId, limit = 100) {
+  const [payments, events] = await Promise.all([
+    listPayments(Math.min(Math.max(Number(limit) || 100, 1), 100)),
+    listAuditEvents(null, 500)
+  ]);
+
+  const uid = String(userId);
+  const ownedIds = new Set(
+    events
+      .filter((event) => telegramUserIdFromEvent(event) === uid)
+      .map((event) => String(event.payment_id || ""))
+      .filter(Boolean)
+  );
+
+  const ownedPayments = payments.filter((payment) => ownedIds.has(String(payment.id)));
+  const ownedEvents = events
+    .filter((event) =>
+      ownedIds.has(String(event.payment_id || "")) ||
+      telegramUserIdFromEvent(event) === uid
+    )
+    .slice(0, 120);
+
+  return { payments: ownedPayments, events: ownedEvents };
+}
+
+function dashboardPayment(payment, userId, base) {
+  const missing = Array.isArray(payment.risk?.missing_fields)
+    ? payment.risk.missing_fields
+    : [];
+  const reviewable =
+    ["analyzed", "failed"].includes(String(payment.status || "")) &&
+    missing.length === 0;
+  const launchToken = reviewable
+    ? signTelegramLaunch({ paymentId: payment.id, userId })
+    : null;
+
+  return {
+    id: payment.id,
+    supplier: payment.supplier || null,
+    invoice: payment.invoice_number || payment.invoice_name || payment.id,
+    invoice_name: payment.invoice_name || null,
+    source_currency: payment.source_currency || null,
+    source_amount: payment.source_amount == null ? null : Number(payment.source_amount),
+    destination_currency: payment.destination_currency || null,
+    destination_amount: payment.destination_amount || null,
+    route: payment.route || null,
+    status: payment.status || null,
+    created_at: payment.created_at || null,
+    updated_at: payment.updated_at || null,
+    beneficiary: {
+      name: payment.beneficiary?.name || null,
+      bank_name: payment.beneficiary?.bank_name || null,
+      account_last4: payment.beneficiary?.account_last4 || null,
+      country: payment.beneficiary?.country || null
+    },
+    risk: {
+      duplicate: Boolean(payment.risk?.duplicate),
+      beneficiary_changed: Boolean(payment.risk?.beneficiary_changed),
+      suspicious: Boolean(payment.risk?.suspicious),
+      missing_fields: missing
+    },
+    settlement: {
+      amount_usdg: payment.approval?.amount_usdg == null
+        ? null
+        : Number(payment.approval.amount_usdg),
+      signature: payment.settlement_signature || null,
+      explorer: payment.status === "settled_devnet" && payment.settlement_signature
+        ? `https://explorer.solana.com/tx/${payment.settlement_signature}?cluster=devnet`
+        : null
+    },
+    review_url: base && launchToken
+      ? `${base}/telegram.html?payment=${encodeURIComponent(payment.id)}&launch=${encodeURIComponent(launchToken)}`
+      : null
+  };
+}
+
+function dashboardEvent(event) {
+  return {
+    id: event.id || null,
+    payment_id: event.payment_id || null,
+    event_type: event.event_type || null,
+    actor: event.actor || null,
+    created_at: event.created_at || null,
+    data: {
+      from: event.data?.from || null,
+      to: event.data?.to || null,
+      mode: event.data?.mode || null,
+      route: event.data?.route || null,
+      amount_usdg: event.data?.amount_usdg == null ? null : Number(event.data.amount_usdg),
+      signature: event.data?.signature || null
+    }
+  };
+}
+
+export async function handleTelegramDashboard(req, res) {
+  try {
+    const auth = verifyTelegramInitData(req.body?.telegramInitData);
+    if (!allowedChat(auth.user.id)) {
+      return res.status(403).json({ error: "This Telegram account is not allowed to open 33Jack." });
+    }
+
+    const base = appBaseUrl(req);
+    const scoped = await telegramScopedData(auth.user.id, 100);
+    const payments = scoped.payments.map((payment) =>
+      dashboardPayment(payment, auth.user.id, base)
+    );
+    const { active, settled, flagged } = compactStatus(scoped.payments);
+    const invoices = payments.filter((payment) => Boolean(payment.invoice));
+
+    return res.status(200).json({
+      ok: true,
+      user: {
+        id: String(auth.user.id),
+        first_name: auth.user.first_name || "",
+        last_name: auth.user.last_name || "",
+        username: auth.user.username || ""
+      },
+      summary: {
+        payments: payments.length,
+        active: active.length,
+        settled: settled.length,
+        risk_review: flagged.length,
+        invoices: invoices.length
+      },
+      payments,
+      invoices,
+      history: scoped.events.map(dashboardEvent)
+    });
+  } catch (error) {
+    return res.status(401).json({
+      error: "Telegram dashboard authentication failed",
+      detail: error?.message || "Unknown Telegram dashboard error"
+    });
+  }
+}
+
 export async function sendTelegramPaymentReceipt({ payment, userId, base = "" }) {
   if (!payment?.id) throw new Error("Payment is required for Telegram receipt");
   if (!userId) throw new Error("Telegram user is required for receipt");
@@ -267,7 +434,13 @@ export async function sendTelegramPaymentReceipt({ payment, userId, base = "" })
 
 export async function handleTelegramMiniAppAction(req, res) {
   const body = req.body || {};
-  if (String(body.action || "").toLowerCase() !== "receipt") {
+  const action = String(body.action || "").toLowerCase();
+
+  if (action === "dashboard") {
+    return handleTelegramDashboard(req, res);
+  }
+
+  if (action !== "receipt") {
     return res.status(400).json({ error: "Unsupported Telegram Mini App action" });
   }
 
@@ -328,6 +501,7 @@ export async function handleTelegramWebhook(req, res) {
     const base = appBaseUrl(req);
 
     if (/^\/start\b/i.test(text)) {
+      await ensureTelegramMenuButton(base);
       await sendMessage(
         chatId,
         [
@@ -344,7 +518,7 @@ export async function handleTelegramWebhook(req, res) {
         base
           ? {
               reply_markup: {
-                inline_keyboard: [[{ text: "Open 33Jack", url: base }]]
+                inline_keyboard: [[{ text: "Open 33Jack", web_app: { url: dashboardUrl(base) } }]]
               }
             }
           : {}
@@ -361,7 +535,9 @@ export async function handleTelegramWebhook(req, res) {
     }
 
     if (/^\/status\b/i.test(text)) {
-      const payments = await listPayments(50);
+      const telegramUserId = message?.from?.id || chatId;
+      const scoped = await telegramScopedData(telegramUserId, 100);
+      const payments = scoped.payments;
       const { active, settled, flagged } = compactStatus(payments);
       await sendMessage(
         chatId,
@@ -376,7 +552,7 @@ export async function handleTelegramWebhook(req, res) {
         base
           ? {
               reply_markup: {
-                inline_keyboard: [[{ text: "Open dashboard", url: base }]]
+                inline_keyboard: [[{ text: "Open dashboard", web_app: { url: dashboardUrl(base) } }]]
               }
             }
           : {}
@@ -393,6 +569,13 @@ export async function handleTelegramWebhook(req, res) {
         corridorMatch?.[1]?.toUpperCase() || "USD"
       );
       const telegramUserId = message?.from?.id || chatId;
+      if (analysis?.id) {
+        await addAuditEvent(analysis.id, "telegram_invoice_received", `telegram-user:${telegramUserId}`, {
+          telegram_user_id: String(telegramUserId),
+          chat_id: String(chatId),
+          invoice_name: analysis.invoice_name || null
+        });
+      }
       const launchToken = analysis?.id
         ? signTelegramLaunch({ paymentId: analysis.id, userId: telegramUserId })
         : null;
@@ -416,8 +599,9 @@ export async function handleTelegramWebhook(req, res) {
       });
     }
 
-    const payments = await listPayments(25);
-    const { active, flagged } = compactStatus(payments);
+    const telegramUserId = message?.from?.id || chatId;
+    const scoped = await telegramScopedData(telegramUserId, 100);
+    const { active, flagged } = compactStatus(scoped.payments);
     await sendMessage(
       chatId,
       `33Jack is connected. I can receive invoices here and prepare them for review. Right now there are ${active.length} active payment(s) and ${flagged.length} requiring risk review. Use /status or upload an invoice.`,
