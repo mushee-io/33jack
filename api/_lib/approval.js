@@ -23,6 +23,8 @@ export function signApproval(input) {
     amountUsdg: Number(input.amountUsdg || 1),
     channel: String(input.channel || "web"),
     telegramUserId: input.telegramUserId == null ? null : String(input.telegramUserId),
+    workspaceId: input.workspaceId == null ? null : String(input.workspaceId),
+    approverRole: input.approverRole || null,
     expiresAt: Date.now() + Math.min(Number(input.expiresInMs || 300000), 900000)
   };
   const body = encode(payload);
