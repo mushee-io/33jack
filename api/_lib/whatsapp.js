@@ -17,7 +17,8 @@ import {
   setWorkspaceMemberRole,
   updateTelegramPreferences
 } from "./db.js";
-import { listPayoutsByWorkspace } from "./payout-store.js";
+import { getPayout, listPayoutsByWorkspace, savePayout } from "./payout-store.js";
+import { getExternalPayoutStatus } from "./payout-provider.js";
 import { signWhatsAppLaunch } from "./whatsapp-auth.js";
 
 const MAX_INVOICE_BYTES = Math.floor(3.2 * 1024 * 1024);
@@ -652,6 +653,63 @@ export async function handleWhatsAppWebhook(req, res, rawBody) {
         continue;
       }
 
+      if (lower.startsWith("track ")) {
+        const payoutId = text.split(/\s+/).slice(1).join(" ").trim();
+        const payout = await getPayout(payoutId);
+        if (!payout || String(payout.workspace_id || "") !== String(workspace.id)) {
+          await sendText(from, "Payout not found in this workspace.");
+          continue;
+        }
+
+        let tracked = payout;
+        let tracking = null;
+        if (String(payout.quote?.provider || "") === "wise_sandbox") {
+          tracking = await getExternalPayoutStatus(payout);
+          tracked = await savePayout({
+            ...payout,
+            status: tracking.localStatus,
+            quote: {
+              ...payout.quote,
+              providerStatus: tracking.providerStatus,
+              providerStatusLabel: tracking.friendlyStatus,
+              providerStatusCheckedAt: new Date().toISOString()
+            }
+          });
+          if (String(payout.quote?.providerStatus || "") !== String(tracking.providerStatus || "")) {
+            await addAuditEvent(
+              payout.id,
+              "fiat_payout_provider_status",
+              `whatsapp-user:${from}`,
+              {
+                workspace_id: workspace.id,
+                provider: "wise_sandbox",
+                transfer_id: tracking.transferId,
+                previous_status: payout.quote?.providerStatus || null,
+                provider_status: tracking.providerStatus,
+                local_status: tracking.localStatus
+              }
+            );
+          }
+        }
+
+        await sendText(
+          from,
+          [
+            "33Jack payout tracking",
+            "",
+            `ID: ${tracked.id}`,
+            `Funding: ${tracked.funding_amount} ${tracked.funding_asset}`,
+            `Destination: ${tracked.destination_amount} ${tracked.destination_currency}`,
+            `Status: ${tracked.status}`,
+            tracking?.friendlyStatus ? `Provider: ${tracking.friendlyStatus}` : null,
+            tracking?.providerStatus ? `Wise status: ${tracking.providerStatus}` : null,
+            tracked.receipt_id ? `Receipt: ${tracked.receipt_id}` : null,
+            tracking?.reconciled ? "Reconciled: ✓" : null
+          ].filter(Boolean).join("\n")
+        );
+        continue;
+      }
+
       if (lower === "payouts") {
         const payouts = await listPayoutsByWorkspace(workspace.id, 20);
         await sendText(
@@ -664,6 +722,7 @@ export async function handleWhatsAppWebhook(req, res, rawBody) {
                   `${index + 1}. ${payout.id} · ${payout.funding_amount} ${payout.funding_asset} → ${payout.destination_amount} ${payout.destination_currency} · ${payout.status}`
                 ),
                 "",
+                "Send TRACK <payout-id> for provider status.",
                 "Fiat payout execution remains inside the controlled 33Jack approval flow."
               ].join("\n")
             : "No fiat payout records are stored for this workspace yet."
@@ -672,7 +731,10 @@ export async function handleWhatsAppWebhook(req, res, rawBody) {
       }
 
       if (lower === "status" || lower === "/status") {
-        const payments = await listPaymentsByWorkspace(workspace.id, 50);
+        const [payments, payouts] = await Promise.all([
+          listPaymentsByWorkspace(workspace.id, 50),
+          listPayoutsByWorkspace(workspace.id, 50)
+        ]);
         const { active, settled, flagged } = compactStatus(payments);
         await sendText(
           from,
@@ -684,7 +746,8 @@ export async function handleWhatsAppWebhook(req, res, rawBody) {
             `Stored payments: ${payments.length}`,
             `Active / pending: ${active.length}`,
             `Settled: ${settled.length}`,
-            `Risk review: ${flagged.length}`
+            `Risk review: ${flagged.length}`,
+            `Fiat payouts: ${payouts.length}`
           ].join("\n")
         );
         continue;
@@ -711,6 +774,7 @@ export async function handleWhatsAppWebhook(req, res, rawBody) {
             "JOIN <code> · join a workspace",
             "BENEFICIARIES · supplier profiles",
             "PAYOUTS · fiat payout state",
+            "TRACK <payout-id> · Wise/provider status",
             "NOTIFY · notification settings",
             "",
             "Money movement still requires the exact human approval flow in 33Jack."
