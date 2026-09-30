@@ -251,22 +251,6 @@
         updateApprovalState();
       }
 
-      async function sendReceipt() {
-        const response = await fetch("/api/agent?provider=telegram-miniapp", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "receipt",
-            paymentId,
-            telegramInitData: initData,
-            telegramLaunchToken: launchToken
-          })
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.detail || data.error || "Telegram receipt could not be sent");
-        return data;
-      }
-
       function showSuccess(finalPayment, settlement, receiptPosted) {
         els.content.classList.add("hidden");
         els.success.classList.remove("hidden");
@@ -282,7 +266,7 @@
         els.successSummary.textContent = "33Jack verified your Telegram approval, executed the configured settlement path and reconciled the payment.";
         els.receiptState.textContent = receiptPosted
           ? "Receipt sent back to the 33Jack Telegram chat ✓"
-          : "Payment completed. The Telegram receipt could not be posted automatically.";
+          : "Payment completed. Receipt delivery was not confirmed automatically.";
         const explorer = settlement?.explorer ||
           (finalPayment?.status === "settled_devnet" && finalPayment?.settlement_signature
             ? "https://explorer.solana.com/tx/" + encodeURIComponent(finalPayment.settlement_signature) + "?cluster=devnet"
@@ -353,14 +337,7 @@
             return;
           }
 
-          let receiptPosted = false;
-          try {
-            await sendReceipt();
-            receiptPosted = true;
-          } catch (receiptError) {
-            console.warn("Telegram receipt failed", receiptError);
-          }
-
+          const receiptPosted = Boolean(settlement?.telegramReceipt?.sent);
           showSuccess(finalPayment, settlement, receiptPosted);
           if (tg?.HapticFeedback) {
             try { tg.HapticFeedback.notificationOccurred("success"); } catch {}
