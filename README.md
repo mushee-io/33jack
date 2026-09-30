@@ -174,8 +174,16 @@ The channel adapter supports:
 - inbound PDF, JPG and PNG invoice messages
 - secure media retrieval through the WhatsApp Cloud API
 - the same Groq invoice extraction and deterministic risk controls as the web app
-- `STATUS` for a compact finance-state summary
-- secure handoff back to the 33Jack web approval flow
+- phone-namespaced workspaces so one WhatsApp user cannot read another user's finance state
+- short-lived signed review links bound to the exact WhatsApp user, workspace and payment
+- server-side role rechecks immediately before approval and settlement
+- settlement receipts returned to the originating WhatsApp chat with idempotency protection
+- `STATUS` for workspace payment, risk and payout counts
+- `TEAM`, `INVITE <role>`, `JOIN <code>` and `ROLE <number> <role>` for workspace access controls
+- `BENEFICIARIES`, `BLOCK ...`, `ALLOW ...` and `REVIEW ...` for beneficiary policy controls
+- `NOTIFY` and `NOTIFY <category> <ON|OFF>` for messaging preferences
+- `PAYOUTS` and `TRACK <payout-id>` for workspace-scoped payout / Wise sandbox tracking
+- secure handoff back to the exact 33Jack payment approval flow
 - server-side outbound replies through the configured WhatsApp phone-number ID
 
 Required environment:
@@ -194,6 +202,30 @@ The Meta app webhook should use your deployed callback URL, for example:
 `https://33jack.vercel.app/api/agent?provider=whatsapp`
 
 Subscribe the WhatsApp app to the `messages` webhook field. Keep access tokens and the app secret out of the browser bundle and repository.
+
+### WhatsApp demo commands
+
+```text
+HELP
+STATUS
+TEAM
+INVITE approver
+JOIN ABC123
+ROLE 2 approver
+BENEFICIARIES
+BLOCK Supplier Name | CNY | beneficiary details changed
+ALLOW Supplier Name | CNY
+REVIEW Supplier Name | CNY | manual review required
+NOTIFY
+NOTIFY RECEIPTS OFF
+PAYOUTS
+TRACK payout_xxx
+```
+
+Invoice documents and images continue through the controlled flow:
+**upload → extraction/risk checks → signed exact-payment review link → role-checked approval → settlement → receipt back in WhatsApp**.
+
+
 
 ## Wise Sandbox webhook
 
