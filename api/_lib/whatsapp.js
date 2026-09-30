@@ -1,5 +1,10 @@
 import crypto from "node:crypto";
-import { listPayments } from "./db.js";
+import {
+  addAuditEvent,
+  assignPaymentWorkspace,
+  getOrCreateTelegramWorkspace,
+  listPaymentsByWorkspace
+} from "./db.js";
 
 const MAX_INVOICE_BYTES = Math.floor(3.2 * 1024 * 1024);
 
@@ -347,14 +352,28 @@ export async function handleWhatsAppWebhook(req, res, rawBody) {
     const base = appBaseUrl(req);
 
     try {
+      // Reuse the same workspace/RBAC backend as Telegram, but namespace the
+      // messaging identity so a WhatsApp phone can never collide with a
+      // Telegram numeric user id.
+      const workspaceContext = await getOrCreateTelegramWorkspace({
+        id: `whatsapp:${from}`,
+        first_name:
+          message?.contact?.profile?.name ||
+          `WhatsApp ••••${from.slice(-4)}`
+      });
+      const workspace = workspaceContext.workspace;
+      const member = workspaceContext.member;
+
       if (lower === "status" || lower === "/status") {
-        const payments = await listPayments(50);
+        const payments = await listPaymentsByWorkspace(workspace.id, 50);
         const { active, settled, flagged } = compactStatus(payments);
         await sendText(
           from,
           [
             "33Jack status",
             "",
+            `Workspace: ${workspace.name || workspace.id}`,
+            `Role: ${member.role}`,
             `Stored payments: ${payments.length}`,
             `Active / pending: ${active.length}`,
             `Settled: ${settled.length}`,
@@ -394,11 +413,31 @@ export async function handleWhatsAppWebhook(req, res, rawBody) {
           message,
           corridorMatch?.[1]?.toUpperCase() || "USD"
         );
-        await sendReviewLink(from, invoiceSummary(analysis), base);
+        if (!analysis?.id) {
+          throw new Error("Invoice analysis did not return a payment id");
+        }
+
+        await assignPaymentWorkspace(analysis.id, workspace.id);
+        await addAuditEvent(
+          analysis.id,
+          "whatsapp_invoice_attached",
+          `whatsapp-user:${from}`,
+          {
+            workspace_id: workspace.id,
+            whatsapp_user_id: from,
+            role: member.role,
+            file_name: mediaDescriptor(message)?.fileName || null
+          }
+        );
+
+        const reviewUrl = base
+          ? `${base}/?channel=whatsapp&paymentId=${encodeURIComponent(analysis.id)}`
+          : base;
+        await sendReviewLink(from, invoiceSummary(analysis), reviewUrl);
         continue;
       }
 
-      const payments = await listPayments(25);
+      const payments = await listPaymentsByWorkspace(workspace.id, 25);
       const { active, flagged } = compactStatus(payments);
       await sendText(
         from,
