@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { listPayments } from "./db.js";
+import { signTelegramLaunch } from "./telegram-auth.js";
 
 const MAX_INVOICE_BYTES = Math.floor(3.2 * 1024 * 1024);
 
@@ -277,13 +278,20 @@ export async function handleTelegramWebhook(req, res) {
         message,
         corridorMatch?.[1]?.toUpperCase() || "USD"
       );
+      const telegramUserId = message?.from?.id || chatId;
+      const launchToken = analysis?.id
+        ? signTelegramLaunch({ paymentId: analysis.id, userId: telegramUserId })
+        : null;
+      const miniAppUrl = base && analysis?.id && launchToken
+        ? `${base}/telegram.html?payment=${encodeURIComponent(analysis.id)}&launch=${encodeURIComponent(launchToken)}`
+        : base;
       await sendMessage(
         chatId,
         invoiceSummary(analysis),
         base
           ? {
               reply_markup: {
-                inline_keyboard: [[{ text: "Review & approve in 33Jack", url: base }]]
+                inline_keyboard: [[{ text: "Review & Pay", web_app: { url: miniAppUrl } }]]
               }
             }
           : {}
