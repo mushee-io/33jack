@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <title>33Jack · Review & Pay</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--tg-theme-text-color, #111827);
+      background: var(--tg-theme-bg-color, #f6f7f9);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--tg-theme-bg-color, #f6f7f9); color: var(--tg-theme-text-color, #111827); }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 18px 16px 32px; }
+    .brand { display:flex; align-items:center; gap:10px; margin-bottom:16px; font-weight:800; letter-spacing:-.02em; }
+    .mark { width:36px; height:36px; display:grid; place-items:center; border-radius:50%; background:#0b0b0c; color:#fff; font-weight:900; }
+    .sub { color:var(--tg-theme-hint-color,#6b7280); font-size:13px; }
+    .card { background:var(--tg-theme-secondary-bg-color,#fff); border:1px solid rgba(127,127,127,.18); border-radius:18px; padding:16px; margin:12px 0; }
+    .eyebrow { font-size:11px; font-weight:800; letter-spacing:.12em; color:var(--tg-theme-hint-color,#6b7280); }
+    h1 { margin:5px 0 4px; font-size:24px; line-height:1.15; }
+    h2 { margin:4px 0 14px; font-size:18px; }
+    .amount { font-size:30px; font-weight:850; letter-spacing:-.03em; margin:8px 0 12px; }
+    .row { display:flex; justify-content:space-between; gap:14px; padding:9px 0; border-bottom:1px solid rgba(127,127,127,.13); font-size:14px; }
+    .row:last-child { border-bottom:0; }
+    .row span:first-child { color:var(--tg-theme-hint-color,#6b7280); }
+    .row b { text-align:right; overflow-wrap:anywhere; }
+    .risk { display:flex; gap:10px; align-items:flex-start; padding:10px 0; font-size:14px; }
+    .dot { width:9px; height:9px; border-radius:50%; margin-top:5px; flex:0 0 auto; background:#19a15f; }
+    .risk.warn .dot { background:#d48b00; }
+    .risk.bad .dot { background:#c93b47; }
+    .ack { display:flex; gap:10px; align-items:flex-start; margin:12px 0; padding:12px; border:1px solid rgba(127,127,127,.18); border-radius:12px; font-size:13px; }
+    .ack input { margin-top:2px; width:18px; height:18px; }
+    button { width:100%; border:0; border-radius:14px; min-height:50px; padding:12px 16px; font-size:16px; font-weight:800; cursor:pointer; }
+    button.primary { background:var(--tg-theme-button-color,#111827); color:var(--tg-theme-button-text-color,#fff); }
+    button.secondary { margin-top:10px; background:transparent; color:var(--tg-theme-link-color,#2481cc); border:1px solid rgba(127,127,127,.24); }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    .notice { border-radius:12px; padding:12px; margin:10px 0; font-size:13px; line-height:1.45; background:rgba(212,139,0,.10); border:1px solid rgba(212,139,0,.25); }
+    .error { background:rgba(201,59,71,.10); border-color:rgba(201,59,71,.25); }
+    .success { background:rgba(25,161,95,.10); border-color:rgba(25,161,95,.25); }
+    .hidden { display:none !important; }
+    .loader { width:22px; height:22px; margin:8px auto; border:3px solid rgba(127,127,127,.25); border-top-color:currentColor; border-radius:50%; animation:spin .8s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .fine { margin-top:10px; color:var(--tg-theme-hint-color,#6b7280); font-size:11px; line-height:1.5; }
+    a { color:var(--tg-theme-link-color,#2481cc); }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <div class="brand"><div class="mark">33</div><div>33Jack <div class="sub">Telegram Mini App</div></div></div>
+
+    <section id="loading" class="card">
+      <div class="loader"></div>
+      <div class="sub" style="text-align:center">Loading exact payment…</div>
+    </section>
+
+    <section id="content" class="hidden">
+      <div class="card">
+        <div class="eyebrow">REVIEW & PAY</div>
+        <h1 id="supplier">—</h1>
+        <div class="sub" id="invoice">—</div>
+        <div class="amount" id="amount">—</div>
+        <div class="row"><span>Destination</span><b id="destination">—</b></div>
+        <div class="row"><span>Route</span><b id="route">—</b></div>
+        <div class="row"><span>Beneficiary</span><b id="beneficiary">—</b></div>
+        <div class="row"><span>Bank</span><b id="bank">—</b></div>
+        <div class="row"><span>Account</span><b id="account">—</b></div>
+        <div class="row"><span>Status</span><b id="status">—</b></div>
+      </div>
+
+      <div class="card">
+        <div class="eyebrow">RISK CONTROLS</div>
+        <h2>Before approval</h2>
+        <div id="risks"></div>
+        <div id="acks"></div>
+      </div>
+
+      <div id="executionNotice" class="notice">
+        This is the current 33Jack controlled test environment. Approval is bound to this exact stored payment. Devnet settlement uses the configured 33Jack safety limit; production money movement remains disabled until licensed payout and compliance infrastructure is connected.
+      </div>
+
+      <div id="message" class="notice hidden"></div>
+      <button id="approveBtn" class="primary" disabled>Approve & Pay</button>
+      <button id="closeBtn" class="secondary" type="button">Close</button>
+      <div class="fine">If amount, beneficiary, route or stored payment details change after approval, 33Jack rejects the settlement and requires a fresh review.</div>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      const tg = window.Telegram?.WebApp;
+      if (tg) {
+        tg.ready();
+        tg.expand();
+        try { tg.setHeaderColor("secondary_bg_color"); } catch {}
+      }
+
+      const qs = new URLSearchParams(location.search);
+      const paymentId = qs.get("payment") || "";
+      const launchToken = qs.get("launch") || "";
+      const initData = tg?.initData || "";
+      const els = {
+        loading: document.getElementById("loading"),
+        content: document.getElementById("content"),
+        supplier: document.getElementById("supplier"),
+        invoice: document.getElementById("invoice"),
+        amount: document.getElementById("amount"),
+        destination: document.getElementById("destination"),
+        route: document.getElementById("route"),
+        beneficiary: document.getElementById("beneficiary"),
+        bank: document.getElementById("bank"),
+        account: document.getElementById("account"),
+        status: document.getElementById("status"),
+        risks: document.getElementById("risks"),
+        acks: document.getElementById("acks"),
+        message: document.getElementById("message"),
+        approveBtn: document.getElementById("approveBtn"),
+        closeBtn: document.getElementById("closeBtn")
+      };
+
+      let payment = null;
+      const acknowledgements = { duplicate:false, beneficiary_changed:false, suspicious:false };
+
+      function money(value, currency) {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return value == null ? "—" : String(value);
+        return n.toLocaleString(undefined, { maximumFractionDigits: 6 }) + (currency ? " " + currency : "");
+      }
+
+      function showMessage(text, tone) {
+        els.message.textContent = text;
+        els.message.className = "notice " + (tone || "");
+      }
+
+      function riskLine(label, detail, tone) {
+        const row = document.createElement("div");
+        row.className = "risk " + (tone || "");
+        const dot = document.createElement("span");
+        dot.className = "dot";
+        const body = document.createElement("div");
+        const strong = document.createElement("strong");
+        strong.textContent = label;
+        const small = document.createElement("div");
+        small.className = "sub";
+        small.textContent = detail;
+        body.append(strong, small);
+        row.append(dot, body);
+        return row;
+      }
+
+      function ack(key, text) {
+        const label = document.createElement("label");
+        label.className = "ack";
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.addEventListener("change", () => {
+          acknowledgements[key] = input.checked;
+          updateApprovalState();
+        });
+        const span = document.createElement("span");
+        span.textContent = text;
+        label.append(input, span);
+        els.acks.append(label);
+      }
+
+      function updateApprovalState() {
+        if (!payment) return;
+        const r = payment.risk || {};
+        const missing = Array.isArray(r.missing_fields) ? r.missing_fields : [];
+        const blocked = missing.length > 0 ||
+          (r.duplicate && !acknowledgements.duplicate) ||
+          (r.beneficiary_changed && !acknowledgements.beneficiary_changed) ||
+          (r.suspicious && !acknowledgements.suspicious) ||
+          !initData || !launchToken ||
+          !["analyzed","failed"].includes(String(payment.status || ""));
+        els.approveBtn.disabled = blocked;
+      }
+
+      function render(p) {
+        payment = p;
+        const r = p.risk || {};
+        const missing = Array.isArray(r.missing_fields) ? r.missing_fields : [];
+        els.supplier.textContent = p.supplier || "Supplier not extracted";
+        els.invoice.textContent = "Invoice " + (p.invoice_number || p.invoice_name || p.id);
+        els.amount.textContent = money(p.source_amount, p.source_currency);
+        els.destination.textContent = p.destination_amount || p.destination_currency || "—";
+        els.route.textContent = p.route || "Pending";
+        els.beneficiary.textContent = p.beneficiary?.name || p.supplier || "—";
+        els.bank.textContent = p.beneficiary?.bank_name || "—";
+        els.account.textContent = p.beneficiary?.account_last4 ? "•••• " + p.beneficiary.account_last4 : "—";
+        els.status.textContent = p.status || "—";
+
+        els.risks.innerHTML = "";
+        els.acks.innerHTML = "";
+        els.risks.append(
+          riskLine(r.duplicate ? "Possible duplicate" : "No duplicate signal", r.duplicate ? "Review the existing payment history before continuing." : "No deterministic duplicate flag is active.", r.duplicate ? "warn" : ""),
+          riskLine(r.beneficiary_changed ? "Beneficiary changed" : "Beneficiary check", r.beneficiary_changed ? "Stored beneficiary details differ and require explicit acknowledgement." : "No beneficiary-change flag is active.", r.beneficiary_changed ? "warn" : ""),
+          riskLine(r.suspicious ? "Suspicious invoice signal" : "Invoice risk", r.summary || "No suspicious flag is active.", r.suspicious ? "bad" : ""),
+          riskLine(missing.length ? "Missing information" : "Required fields present", missing.length ? missing.join(", ") : "No required-field blocker is active.", missing.length ? "warn" : "")
+        );
+
+        if (r.duplicate) ack("duplicate", "I reviewed the duplicate warning and still want to continue.");
+        if (r.beneficiary_changed) ack("beneficiary_changed", "I acknowledge the beneficiary-detail change.");
+        if (r.suspicious) ack("suspicious", "I reviewed the suspicious-invoice warning.");
+
+        if (!initData) showMessage("Open this payment from the 33Jack Telegram bot. Telegram authentication is not available in a normal browser.", "error");
+        else if (missing.length) showMessage("Payment is blocked until the missing invoice fields are resolved: " + missing.join(", "), "");
+        else els.message.className = "notice hidden";
+
+        updateApprovalState();
+      }
+
+      async function loadPayment() {
+        if (!paymentId || !launchToken) {
+          throw new Error("This Telegram payment link is incomplete.");
+        }
+        const response = await fetch("/api/payment?id=" + encodeURIComponent(paymentId));
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || data.error || "Payment could not be loaded");
+        render(data.payment);
+        els.loading.classList.add("hidden");
+        els.content.classList.remove("hidden");
+      }
+
+      els.approveBtn.addEventListener("click", async () => {
+        if (!payment || els.approveBtn.disabled) return;
+        els.approveBtn.disabled = true;
+        els.approveBtn.textContent = "Approving…";
+        showMessage("Locking the exact payment instruction to your Telegram approval…", "");
+        try {
+          const approvalResponse = await fetch("/api/approve", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              paymentId: payment.id,
+              acknowledgements,
+              amountUsdg: 1,
+              channel: "telegram",
+              telegramInitData: initData,
+              telegramLaunchToken: launchToken
+            })
+          });
+          const approval = await approvalResponse.json().catch(() => ({}));
+          if (!approvalResponse.ok) throw new Error(approval.detail || approval.error || "Approval failed");
+
+          els.approveBtn.textContent = "Settling…";
+          showMessage("Approval verified. 33Jack is executing the configured settlement path…", "");
+
+          const settleResponse = await fetch("/api/settle", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ approvalToken: approval.approvalToken })
+          });
+          const settlement = await settleResponse.json().catch(() => ({}));
+          if (!settleResponse.ok && settleResponse.status !== 202) {
+            throw new Error(settlement.detail || settlement.error || "Settlement failed");
+          }
+
+          const refreshed = await fetch("/api/payment?id=" + encodeURIComponent(payment.id));
+          const refreshedData = await refreshed.json().catch(() => ({}));
+          if (refreshed.ok && refreshedData.payment) render(refreshedData.payment);
+
+          els.approveBtn.classList.add("hidden");
+          const suffix = settlement.explorer ? " View the Solana transaction from the 33Jack payment record." : "";
+          showMessage("Payment approved and settlement recorded. Status: " + (refreshedData.payment?.status || settlement.status || settlement.mode || "processed") + "." + suffix, "success");
+          if (tg?.HapticFeedback) {
+            try { tg.HapticFeedback.notificationOccurred("success"); } catch {}
+          }
+        } catch (error) {
+          els.approveBtn.textContent = "Approve & Pay";
+          showMessage(error.message || "Payment failed", "error");
+          updateApprovalState();
+          if (tg?.HapticFeedback) {
+            try { tg.HapticFeedback.notificationOccurred("error"); } catch {}
+          }
+        }
+      });
+
+      els.closeBtn.addEventListener("click", () => {
+        if (tg?.close) tg.close();
+        else history.back();
+      });
+
+      loadPayment().catch((error) => {
+        els.loading.innerHTML = '<div class="notice error">' + String(error.message || "Could not load payment").replace(/[<>&]/g, "") + '</div>';
+      });
+    })();
+  </script>
+</body>
+</html>
