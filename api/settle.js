@@ -14,22 +14,28 @@ async function maybeSendTelegramReceipt(paymentId, approved) {
   if (
     String(approved?.channel || "") !== "telegram-mini-app" ||
     !approved?.telegramUserId
-  ) return;
+  ) return { attempted: false, sent: false };
 
   try {
     const fresh = await getPayment(paymentId);
-    if (!fresh) return;
-    await sendTelegramPaymentReceipt({
+    if (!fresh) return { attempted: true, sent: false };
+    const result = await sendTelegramPaymentReceipt({
       payment: fresh,
       userId: approved.telegramUserId,
       base: String(process.env.PUBLIC_APP_URL || process.env.APP_BASE_URL || "").replace(/\/$/, "")
     });
+    return {
+      attempted: true,
+      sent: Boolean(result?.ok),
+      idempotent: Boolean(result?.idempotent)
+    };
   } catch (error) {
     // A receipt failure must never roll back or misreport a completed settlement.
     await addAuditEvent(paymentId, "telegram_receipt_failed", "settlement-engine", {
       telegram_user_id: String(approved.telegramUserId),
       error: error?.message || "Unknown Telegram receipt error"
     }).catch(() => {});
+    return { attempted: true, sent: false, error: error?.message || "Unknown error" };
   }
 }
 
@@ -187,13 +193,14 @@ export default async function handler(req, res) {
         signature: simulated
       });
 
-      await maybeSendTelegramReceipt(payment.id, approved);
+      const telegramReceipt = await maybeSendTelegramReceipt(payment.id, approved);
 
       return res.status(200).json({
         mode: "demo",
         signature: simulated,
         explorer: null,
         idempotent: false,
+        telegramReceipt,
         message:
           "Approval was verified and state was reconciled, but Devnet signer/recipient are not configured, so no tokens were moved."
       });
@@ -366,13 +373,14 @@ export default async function handler(req, res) {
       explorer
     });
 
-    await maybeSendTelegramReceipt(payment.id, approved);
+    const telegramReceipt = await maybeSendTelegramReceipt(payment.id, approved);
 
     return res.status(200).json({
       mode: "devnet",
       signature: networkSignature,
       explorer,
-      idempotent: false
+      idempotent: false,
+      telegramReceipt
     });
   } catch (error) {
     console.error("settlement failed", error);
