@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { listBeneficiaries, listPayments } from "./_lib/db.js";
-import { handleTelegramWebhook } from "./_lib/telegram.js";
+import { handleTelegramMiniAppAction, handleTelegramWebhook } from "./_lib/telegram.js";
 import { handleWhatsAppWebhook } from "./_lib/whatsapp.js";
 
 export const config = { api: { bodyParser: false } };
@@ -146,6 +146,10 @@ export default async function handler(req, res) {
 
   if (provider === "telegram") {
     return handleTelegramWebhook(req, res);
+  }
+
+  if (provider === "telegram-miniapp") {
+    return handleTelegramMiniAppAction(req, res);
   }
 
   const message = String(body?.message || "").trim();
