@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import { listBeneficiaries, listPayments } from "./_lib/db.js";
 import { handleTelegramMiniAppAction, handleTelegramWebhook } from "./_lib/telegram.js";
-import { handleWhatsAppWebhook } from "./_lib/whatsapp.js";
+import { handleWhatsAppReview, handleWhatsAppWebhook } from "./_lib/whatsapp.js";
 
 export const config = { api: { bodyParser: false } };
 
@@ -121,6 +121,10 @@ export default async function handler(req, res) {
 
   if (provider === "whatsapp" && req.method === "GET") {
     return handleWhatsAppWebhook(req, res, Buffer.alloc(0));
+  }
+
+  if (provider === "whatsapp-review" && req.method === "GET") {
+    return handleWhatsAppReview(req, res);
   }
 
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
