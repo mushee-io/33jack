@@ -2,7 +2,9 @@ import { signApproval } from "./_lib/approval.js";
 import { verifyTelegramApproval } from "./_lib/telegram-auth.js";
 import {
   addAuditEvent,
+  getOrCreateTelegramWorkspace,
   getPayment,
+  roleCan,
   transitionPayment
 } from "./_lib/db.js";
 import {
@@ -26,12 +28,20 @@ export default async function handler(req, res) {
     const acknowledgements = body.acknowledgements || {};
     let approvalActor = "human-approver";
     let telegramAuth = null;
+    let workspaceContext = null;
     if (String(body.channel || "").toLowerCase() === "telegram") {
       telegramAuth = verifyTelegramApproval({
         initData: body.telegramInitData,
         launchToken: body.telegramLaunchToken,
         paymentId: payment.id
       });
+      workspaceContext = await getOrCreateTelegramWorkspace(telegramAuth.user);
+      if (!roleCan(workspaceContext.member.role, "approve")) {
+        return res.status(403).json({ error: "Your workspace role cannot approve payments" });
+      }
+      if (!payment.workspace_id || String(payment.workspace_id) !== String(workspaceContext.workspace.id)) {
+        return res.status(403).json({ error: "Payment is not available to this workspace" });
+      }
       approvalActor = `telegram-user:${telegramAuth.user.id}`;
     }
     assertApprovalAllowed(payment, acknowledgements);
@@ -52,7 +62,9 @@ export default async function handler(req, res) {
       route: payment.route,
       amountUsdg,
       channel: telegramAuth ? "telegram-mini-app" : "web",
-      telegramUserId: telegramAuth ? String(telegramAuth.user.id) : null
+      telegramUserId: telegramAuth ? String(telegramAuth.user.id) : null,
+      workspaceId: workspaceContext?.workspace?.id || payment.workspace_id || null,
+      approverRole: workspaceContext?.member?.role || null
     });
 
     await transitionPayment(
@@ -73,7 +85,9 @@ export default async function handler(req, res) {
         approval_expires_at: signed.payload.expiresAt,
         amount_usdg: amountUsdg,
         channel: telegramAuth ? "telegram-mini-app" : "web",
-        telegram_user_id: telegramAuth ? String(telegramAuth.user.id) : null
+        telegram_user_id: telegramAuth ? String(telegramAuth.user.id) : null,
+        workspace_id: workspaceContext?.workspace?.id || payment.workspace_id || null,
+        approver_role: workspaceContext?.member?.role || null
       }
     );
 
@@ -84,7 +98,9 @@ export default async function handler(req, res) {
       destination_currency: payment.destination_currency,
       expires_at: signed.payload.expiresAt,
       channel: telegramAuth ? "telegram-mini-app" : "web",
-      telegram_user_id: telegramAuth ? String(telegramAuth.user.id) : null
+      telegram_user_id: telegramAuth ? String(telegramAuth.user.id) : null,
+      workspace_id: workspaceContext?.workspace?.id || payment.workspace_id || null,
+      approver_role: workspaceContext?.member?.role || null
     });
 
     return res.status(200).json({
