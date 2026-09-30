@@ -6,8 +6,32 @@ import {
   upsertBeneficiary
 } from "./_lib/db.js";
 import { PAYMENT_STATUS } from "./_lib/state.js";
+import { sendTelegramPaymentReceipt } from "./_lib/telegram.js";
 
 const DEVNET = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
+
+async function maybeSendTelegramReceipt(paymentId, approved) {
+  if (
+    String(approved?.channel || "") !== "telegram-mini-app" ||
+    !approved?.telegramUserId
+  ) return;
+
+  try {
+    const fresh = await getPayment(paymentId);
+    if (!fresh) return;
+    await sendTelegramPaymentReceipt({
+      payment: fresh,
+      userId: approved.telegramUserId,
+      base: String(process.env.PUBLIC_APP_URL || process.env.APP_BASE_URL || "").replace(/\/$/, "")
+    });
+  } catch (error) {
+    // A receipt failure must never roll back or misreport a completed settlement.
+    await addAuditEvent(paymentId, "telegram_receipt_failed", "settlement-engine", {
+      telegram_user_id: String(approved.telegramUserId),
+      error: error?.message || "Unknown Telegram receipt error"
+    }).catch(() => {});
+  }
+}
 
 function sameText(a, b) {
   return String(a ?? "").trim() === String(b ?? "").trim();
@@ -162,6 +186,8 @@ export default async function handler(req, res) {
         mode: "demo",
         signature: simulated
       });
+
+      await maybeSendTelegramReceipt(payment.id, approved);
 
       return res.status(200).json({
         mode: "demo",
@@ -339,6 +365,8 @@ export default async function handler(req, res) {
       signature: networkSignature,
       explorer
     });
+
+    await maybeSendTelegramReceipt(payment.id, approved);
 
     return res.status(200).json({
       mode: "devnet",
