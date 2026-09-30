@@ -200,6 +200,71 @@ function invoiceSummary(analysis = {}) {
   ].join("\n");
 }
 
+export async function sendTelegramPaymentReceipt({ payment, userId, base = "" }) {
+  if (!payment?.id) throw new Error("Payment is required for Telegram receipt");
+  if (!userId) throw new Error("Telegram user is required for receipt");
+
+  if (!["settled_demo", "settled_devnet"].includes(String(payment.status || ""))) {
+    throw new Error(`Payment is not settled yet (current status: ${payment.status || "unknown"})`);
+  }
+
+  const existingEvents = await listAuditEvents(payment.id, 100);
+  const alreadySent = existingEvents.some((event) =>
+    event.event_type === "telegram_receipt_sent" &&
+    String(event.data?.telegram_user_id || "") === String(userId)
+  );
+
+  if (alreadySent) {
+    return { ok: true, idempotent: true };
+  }
+
+  const settlementAmount = Number(payment.approval?.amount_usdg || 0);
+  const statusLabel = payment.status === "settled_devnet"
+    ? "Settled on Solana Devnet"
+    : "Settled in controlled demo";
+  const invoiceAmount = payment.source_amount && payment.source_currency
+    ? `${payment.source_currency} ${Number(payment.source_amount).toLocaleString()}`
+    : "—";
+
+  const lines = [
+    "33Jack payment complete",
+    "",
+    `Supplier: ${payment.supplier || "—"}`,
+    `Invoice: ${payment.invoice_number || payment.invoice_name || payment.id}`,
+    `Invoice amount: ${invoiceAmount}`,
+    settlementAmount > 0 ? `Settlement amount: ${settlementAmount} USDG` : null,
+    `Destination: ${payment.destination_amount || payment.destination_currency || "—"}`,
+    `Status: ${statusLabel}`,
+    "Reconciled: ✓",
+    payment.settlement_signature ? `Reference: ${payment.settlement_signature}` : null
+  ].filter(Boolean);
+
+  const buttons = [];
+  if (payment.status === "settled_devnet" && payment.settlement_signature) {
+    buttons.push([{
+      text: "View Solana transaction",
+      url: `https://explorer.solana.com/tx/${payment.settlement_signature}?cluster=devnet`
+    }]);
+  }
+  if (base) {
+    buttons.push([{ text: "Open 33Jack", url: base }]);
+  }
+
+  await sendMessage(
+    userId,
+    lines.join("\n"),
+    buttons.length ? { reply_markup: { inline_keyboard: buttons } } : {}
+  );
+
+  await addAuditEvent(payment.id, "telegram_receipt_sent", `telegram-user:${userId}`, {
+    telegram_user_id: String(userId),
+    status: payment.status,
+    settlement_signature: payment.settlement_signature || null
+  });
+
+  return { ok: true, idempotent: false };
+}
+
 export async function handleTelegramMiniAppAction(req, res) {
   const body = req.body || {};
   if (String(body.action || "").toLowerCase() !== "receipt") {
@@ -226,62 +291,13 @@ export async function handleTelegramMiniAppAction(req, res) {
       });
     }
 
-    const existingEvents = await listAuditEvents(payment.id, 100);
-    const alreadySent = existingEvents.some((event) =>
-      event.event_type === "telegram_receipt_sent" &&
-      String(event.data?.telegram_user_id || "") === String(auth.user.id)
-    );
-
-    if (alreadySent) {
-      return res.status(200).json({ ok: true, idempotent: true });
-    }
-
-    const settlementAmount = Number(payment.approval?.amount_usdg || 0);
-    const statusLabel = payment.status === "settled_devnet"
-      ? "Settled on Solana Devnet"
-      : "Settled in controlled demo";
-    const invoiceAmount = payment.source_amount && payment.source_currency
-      ? `${payment.source_currency} ${Number(payment.source_amount).toLocaleString()}`
-      : "—";
-
-    const lines = [
-      "33Jack payment complete",
-      "",
-      `Supplier: ${payment.supplier || "—"}`,
-      `Invoice: ${payment.invoice_number || payment.invoice_name || payment.id}`,
-      `Invoice amount: ${invoiceAmount}`,
-      settlementAmount > 0 ? `Settlement amount: ${settlementAmount} USDG` : null,
-      `Destination: ${payment.destination_amount || payment.destination_currency || "—"}`,
-      `Status: ${statusLabel}`,
-      "Reconciled: ✓",
-      payment.settlement_signature ? `Reference: ${payment.settlement_signature}` : null
-    ].filter(Boolean);
-
-    const base = appBaseUrl(req);
-    const buttons = [];
-    if (payment.status === "settled_devnet" && payment.settlement_signature) {
-      buttons.push([{
-        text: "View Solana transaction",
-        url: `https://explorer.solana.com/tx/${payment.settlement_signature}?cluster=devnet`
-      }]);
-    }
-    if (base) {
-      buttons.push([{ text: "Open 33Jack", url: base }]);
-    }
-
-    await sendMessage(
-      auth.user.id,
-      lines.join("\n"),
-      buttons.length ? { reply_markup: { inline_keyboard: buttons } } : {}
-    );
-
-    await addAuditEvent(payment.id, "telegram_receipt_sent", `telegram-user:${auth.user.id}`, {
-      telegram_user_id: String(auth.user.id),
-      status: payment.status,
-      settlement_signature: payment.settlement_signature || null
+    const result = await sendTelegramPaymentReceipt({
+      payment,
+      userId: auth.user.id,
+      base: appBaseUrl(req)
     });
 
-    return res.status(200).json({ ok: true, idempotent: false });
+    return res.status(200).json(result);
   } catch (error) {
     return res.status(400).json({
       error: "Telegram receipt rejected",
