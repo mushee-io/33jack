@@ -10,7 +10,7 @@ function encode(value) {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
-export function signPayoutApproval(payout) {
+export function signPayoutApproval(payout, context = {}) {
   const payload = {
     type: "fiat_payout_sandbox",
     payoutId: payout.id,
@@ -25,6 +25,10 @@ export function signPayoutApproval(payout) {
     providerQuoteId: payout.quote?.providerQuoteId || null,
     beneficiary: payout.beneficiary,
     quoteExpiresAt: Number(payout.quote?.expiresAt || 0),
+    workspaceId: payout.workspace_id || context.workspaceId || null,
+    channel: String(context.channel || "web"),
+    telegramUserId: context.telegramUserId == null ? null : String(context.telegramUserId),
+    approverRole: context.approverRole || null,
     expiresAt: Date.now() + 15 * 60 * 1000
   };
   const body = encode(payload);
