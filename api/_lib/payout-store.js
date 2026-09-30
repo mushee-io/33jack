@@ -50,13 +50,19 @@ export async function ensurePayoutSchema() {
       beneficiary jsonb not null,
       status text not null,
       receipt_id text,
+      workspace_id text,
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     )
   `;
+  await client`alter table jack_payouts add column if not exists workspace_id text`;
   await client`
     create index if not exists jack_payouts_status_idx
     on jack_payouts(status)
+  `;
+  await client`
+    create index if not exists jack_payouts_workspace_idx
+    on jack_payouts(workspace_id, updated_at desc)
   `;
   ready = true;
   return true;
@@ -80,14 +86,14 @@ export async function savePayout(payout) {
     insert into jack_payouts (
       id, invoice_ref, funding_asset, funding_amount, destination_currency,
       destination_amount, exchange_rate, fee_amount, quote, beneficiary,
-      status, receipt_id
+      status, receipt_id, workspace_id
     ) values (
       ${payout.id}, ${payout.invoice_ref || null}, ${payout.funding_asset},
       ${payout.funding_amount}, ${payout.destination_currency},
       ${payout.destination_amount}, ${payout.exchange_rate},
       ${payout.fee_amount}, ${JSON.stringify(payout.quote)}::jsonb,
       ${JSON.stringify(payout.beneficiary)}::jsonb,
-      ${payout.status}, ${payout.receipt_id || null}
+      ${payout.status}, ${payout.receipt_id || null}, ${payout.workspace_id || null}
     )
     on conflict (id) do update set
       invoice_ref = excluded.invoice_ref,
@@ -101,6 +107,7 @@ export async function savePayout(payout) {
       beneficiary = excluded.beneficiary,
       status = excluded.status,
       receipt_id = coalesce(excluded.receipt_id, jack_payouts.receipt_id),
+      workspace_id = coalesce(excluded.workspace_id, jack_payouts.workspace_id),
       updated_at = now()
     returning *
   `;
@@ -159,6 +166,21 @@ export async function listPayouts(limit = 25) {
   return rows.map(normalizePayout);
 }
 
+
+
+export async function listPayoutsByWorkspace(workspaceId, limit = 100) {
+  if (!workspaceId) return [];
+  const client = db();
+  if (!client) return memory.filter((p) => String(p.workspace_id || "") === String(workspaceId)).slice(0, limit).map(normalizePayout);
+  await ensurePayoutSchema();
+  const rows = await client`
+    select * from jack_payouts
+    where workspace_id = ${String(workspaceId)}
+    order by updated_at desc
+    limit ${Math.min(Math.max(Number(limit) || 100, 1), 250)}
+  `;
+  return rows.map(normalizePayout);
+}
 
 export async function findPayoutByProviderTransferId(transferId) {
   const value = String(transferId || "").trim();
