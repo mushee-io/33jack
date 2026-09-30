@@ -28,3 +28,23 @@ const info = await infoResponse.json();
 
 console.log("Telegram webhook configured:", url);
 console.log(JSON.stringify(info?.result || info, null, 2));
+
+
+const dashboardUrl = `${base}/telegram-dashboard.html`;
+const menuResponse = await fetch(`https://api.telegram.org/bot${token}/setChatMenuButton`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    menu_button: {
+      type: "web_app",
+      text: "Open 33Jack",
+      web_app: { url: dashboardUrl }
+    }
+  })
+});
+const menuData = await menuResponse.json();
+if (!menuResponse.ok || menuData?.ok === false) {
+  throw new Error(menuData?.description || `Telegram setChatMenuButton failed with HTTP ${menuResponse.status}`);
+}
+
+console.log("Telegram menu button configured:", dashboardUrl);
