@@ -477,6 +477,14 @@ export async function sendTelegramPaymentReceipt({ payment, userId, base = "" })
   if (!payment?.id) throw new Error("Payment is required for Telegram receipt");
   if (!userId) throw new Error("Telegram user is required for receipt");
 
+  const membership = await getTelegramWorkspaceMembership(userId);
+  if (membership) {
+    const preferences = await getTelegramPreferences(membership.workspace.id, userId);
+    if (preferences.receipt_messages === false) {
+      return { ok: true, idempotent: false, suppressed: true };
+    }
+  }
+
   if (!["settled_demo", "settled_devnet"].includes(String(payment.status || ""))) {
     throw new Error(`Payment is not settled yet (current status: ${payment.status || "unknown"})`);
   }
@@ -544,6 +552,136 @@ export async function handleTelegramMiniAppAction(req, res) {
 
   if (action === "dashboard") {
     return handleTelegramDashboard(req, res);
+  }
+
+  if (["preferences_update", "invite_create", "invite_join", "member_role", "beneficiary_control", "payout_track"].includes(action)) {
+    try {
+      const auth = verifyTelegramInitData(body.telegramInitData, 3600);
+      if (!allowedChat(auth.user.id)) {
+        return res.status(403).json({ error: "This Telegram account is not allowed to use 33Jack." });
+      }
+
+      if (action === "invite_join") {
+        const joined = await joinWorkspaceInvite(auth.user, body.code);
+        await addAuditEvent(null, "workspace_member_joined", `telegram-user:${auth.user.id}`, {
+          workspace_id: joined.workspace.id,
+          role: joined.member.role,
+          telegram_user_id: String(auth.user.id)
+        });
+        return res.status(200).json({ ok: true, workspace: joined.workspace, member: joined.member });
+      }
+
+      const context = await getOrCreateTelegramWorkspace(auth.user);
+
+      if (action === "preferences_update") {
+        const preferences = await updateTelegramPreferences(
+          context.workspace.id,
+          auth.user.id,
+          body.preferences || {}
+        );
+        return res.status(200).json({ ok: true, preferences });
+      }
+
+      if (action === "invite_create") {
+        if (!roleCan(context.member.role, "manage_team")) {
+          return res.status(403).json({ error: "Your workspace role cannot invite team members" });
+        }
+        const invite = await createWorkspaceInvite(
+          context.workspace.id,
+          auth.user.id,
+          body.role || "viewer",
+          body.ttlMinutes || 1440
+        );
+        return res.status(200).json({ ok: true, invite });
+      }
+
+      if (action === "member_role") {
+        if (!roleCan(context.member.role, "manage_team")) {
+          return res.status(403).json({ error: "Your workspace role cannot manage team roles" });
+        }
+        if (String(body.telegramUserId || "") === String(auth.user.id)) {
+          return res.status(400).json({ error: "You cannot change your own role here" });
+        }
+        const member = await setWorkspaceMemberRole(
+          context.workspace.id,
+          body.telegramUserId,
+          body.role
+        );
+        await addAuditEvent(null, "workspace_member_role_changed", `telegram-user:${auth.user.id}`, {
+          workspace_id: context.workspace.id,
+          target_telegram_user_id: String(body.telegramUserId),
+          role: member.role
+        });
+        return res.status(200).json({ ok: true, member });
+      }
+
+      if (action === "beneficiary_control") {
+        if (!roleCan(context.member.role, "manage_beneficiaries")) {
+          return res.status(403).json({ error: "Your workspace role cannot manage beneficiaries" });
+        }
+        const control = await setBeneficiaryControl(
+          context.workspace.id,
+          body.supplier,
+          body.destinationCurrency,
+          body.status,
+          body.note,
+          auth.user.id
+        );
+        await addAuditEvent(null, "beneficiary_control_changed", `telegram-user:${auth.user.id}`, {
+          workspace_id: context.workspace.id,
+          supplier: body.supplier,
+          destination_currency: body.destinationCurrency,
+          status: control.status
+        });
+        return res.status(200).json({ ok: true, control });
+      }
+
+      if (action === "payout_track") {
+        const payout = await getPayout(body.payoutId);
+        if (!payout || String(payout.workspace_id || "") !== String(context.workspace.id)) {
+          return res.status(404).json({ error: "Payout not found in this workspace" });
+        }
+        if (String(payout.quote?.provider || "") !== "wise_sandbox") {
+          return res.status(200).json({ ok: true, payout: dashboardPayout(payout, context.member.role), tracking: null });
+        }
+        const tracking = await getExternalPayoutStatus(payout);
+        const updated = await savePayout({
+          ...payout,
+          status: tracking.localStatus,
+          quote: {
+            ...payout.quote,
+            providerStatus: tracking.providerStatus,
+            providerStatusLabel: tracking.friendlyStatus,
+            providerStatusCheckedAt: new Date().toISOString()
+          }
+        });
+        if (String(payout.quote?.providerStatus || "") !== String(tracking.providerStatus || "")) {
+          await addAuditEvent(payout.id, "fiat_payout_provider_status", `telegram-user:${auth.user.id}`, {
+            workspace_id: context.workspace.id,
+            provider: "wise_sandbox",
+            transfer_id: tracking.transferId,
+            previous_status: payout.quote?.providerStatus || null,
+            provider_status: tracking.providerStatus,
+            local_status: tracking.localStatus
+          });
+        }
+        return res.status(200).json({
+          ok: true,
+          payout: dashboardPayout(updated, context.member.role),
+          tracking: {
+            provider_status: tracking.providerStatus,
+            friendly_status: tracking.friendlyStatus,
+            reconciled: tracking.reconciled,
+            final: tracking.final
+          }
+        });
+      }
+    } catch (error) {
+      return res.status(400).json({
+        error: "Telegram workspace action failed",
+        detail: error?.message || "Unknown Telegram workspace error"
+      });
+    }
   }
 
   if (action !== "receipt") {
