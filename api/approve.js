@@ -1,4 +1,5 @@
 import { signApproval } from "./_lib/approval.js";
+import { verifyTelegramApproval } from "./_lib/telegram-auth.js";
 import {
   addAuditEvent,
   getPayment,
@@ -23,6 +24,16 @@ export default async function handler(req, res) {
     if (!payment) return res.status(404).json({ error: "Payment not found" });
 
     const acknowledgements = body.acknowledgements || {};
+    let approvalActor = "human-approver";
+    let telegramAuth = null;
+    if (String(body.channel || "").toLowerCase() === "telegram") {
+      telegramAuth = verifyTelegramApproval({
+        initData: body.telegramInitData,
+        launchToken: body.telegramLaunchToken,
+        paymentId: payment.id
+      });
+      approvalActor = `telegram-user:${telegramAuth.user.id}`;
+    }
     assertApprovalAllowed(payment, acknowledgements);
 
     const amountUsdg = Number(body.amountUsdg || body.amountUsdc || 1);
@@ -53,21 +64,25 @@ export default async function handler(req, res) {
           mode: signed.mode
         }
       },
-      "human-approver",
+      approvalActor,
       {
         required_acknowledgements: requiredAcknowledgements(payment),
         provided_acknowledgements: acknowledgements,
         approval_expires_at: signed.payload.expiresAt,
-        amount_usdg: amountUsdg
+        amount_usdg: amountUsdg,
+        channel: telegramAuth ? "telegram-mini-app" : "web",
+        telegram_user_id: telegramAuth ? String(telegramAuth.user.id) : null
       }
     );
 
-    await addAuditEvent(payment.id, "payment_approved", "human-approver", {
+    await addAuditEvent(payment.id, "payment_approved", approvalActor, {
       route: payment.route,
       source_amount: payment.source_amount,
       source_currency: payment.source_currency,
       destination_currency: payment.destination_currency,
-      expires_at: signed.payload.expiresAt
+      expires_at: signed.payload.expiresAt,
+      channel: telegramAuth ? "telegram-mini-app" : "web",
+      telegram_user_id: telegramAuth ? String(telegramAuth.user.id) : null
     });
 
     return res.status(200).json({
