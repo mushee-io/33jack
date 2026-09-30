@@ -1,4 +1,5 @@
 import postgres from "postgres";
+import crypto from "node:crypto";
 import { assertTransition } from "./state.js";
 
 let sql;
@@ -7,7 +8,12 @@ let ready = false;
 const memory = globalThis.__33jackStore || (globalThis.__33jackStore = {
   payments: [],
   events: [],
-  beneficiaries: []
+  beneficiaries: [],
+  workspaces: [],
+  members: [],
+  preferences: [],
+  invites: [],
+  beneficiaryControls: []
 });
 
 function db() {
@@ -49,6 +55,7 @@ export async function ensureSchema() {
       settlement_signature text,
       approval jsonb,
       invoice_meta jsonb,
+      workspace_id text,
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     )
@@ -60,6 +67,7 @@ export async function ensureSchema() {
   await client`alter table jack_payments add column if not exists beneficiary jsonb`;
   await client`alter table jack_payments add column if not exists approval jsonb`;
   await client`alter table jack_payments add column if not exists invoice_meta jsonb`;
+  await client`alter table jack_payments add column if not exists workspace_id text`;
 
   await client`
     create index if not exists jack_payments_invoice_hash_idx
@@ -72,6 +80,10 @@ export async function ensureSchema() {
   await client`
     create index if not exists jack_payments_status_idx
     on jack_payments(status)
+  `;
+  await client`
+    create index if not exists jack_payments_workspace_idx
+    on jack_payments(workspace_id, created_at desc)
   `;
 
   await client`
@@ -106,6 +118,73 @@ export async function ensureSchema() {
     )
   `;
 
+  await client`
+    create table if not exists jack_workspaces (
+      id text primary key,
+      name text not null,
+      owner_telegram_id text not null,
+      kyb_status text not null default 'not_configured',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    )
+  `;
+
+  await client`
+    create table if not exists jack_workspace_members (
+      workspace_id text not null,
+      telegram_user_id text not null,
+      display_name text,
+      username text,
+      role text not null default 'viewer',
+      status text not null default 'active',
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now(),
+      primary key (workspace_id, telegram_user_id)
+    )
+  `;
+  await client`
+    create index if not exists jack_workspace_members_user_idx
+    on jack_workspace_members(telegram_user_id, status)
+  `;
+
+  await client`
+    create table if not exists jack_workspace_invites (
+      code text primary key,
+      workspace_id text not null,
+      role text not null,
+      created_by text not null,
+      expires_at timestamptz not null,
+      used_by text,
+      used_at timestamptz,
+      created_at timestamptz not null default now()
+    )
+  `;
+
+  await client`
+    create table if not exists jack_user_preferences (
+      workspace_id text not null,
+      telegram_user_id text not null,
+      payment_updates boolean not null default true,
+      risk_alerts boolean not null default true,
+      payout_updates boolean not null default true,
+      receipt_messages boolean not null default true,
+      updated_at timestamptz not null default now(),
+      primary key (workspace_id, telegram_user_id)
+    )
+  `;
+
+  await client`
+    create table if not exists jack_beneficiary_controls (
+      workspace_id text not null,
+      supplier_key text not null,
+      destination_currency text not null default '',
+      status text not null default 'review',
+      note text,
+      updated_by text not null,
+      updated_at timestamptz not null default now(),
+      primary key (workspace_id, supplier_key, destination_currency)
+    )
+  `;
   ready = true;
   return true;
 }
