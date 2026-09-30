@@ -14,6 +14,7 @@ import payoutSettle from "../api/payout-settle.js";
 import { getPayout, savePayout } from "../api/_lib/payout-store.js";
 import { getPayoutQuote, executeExternalPayout, getPayoutProviderReadiness } from "../api/_lib/payout-provider.js";
 import { evaluatePayoutPolicy } from "../api/_lib/policy.js";
+import { signTelegramLaunch } from "../api/_lib/telegram-auth.js";
 
 function invoke(handler, method = "GET", body = undefined, query = undefined, headers = {}) {
   return new Promise((resolve, reject) => {
@@ -518,6 +519,63 @@ const telegramStart = await invoke(
 );
 assert.equal(telegramStart.status, 200);
 assert.equal(telegramStart.data.ok, true);
+
+// Telegram Mini App approval identity + post-settlement receipt must be
+// bound to the signed Telegram user and payment.
+const telegramUser = { id: 123, first_name: "CI", username: "ci_user" };
+const authDate = Math.floor(Date.now() / 1000);
+const initParams = new URLSearchParams({
+  auth_date: String(authDate),
+  query_id: "ci-query",
+  user: JSON.stringify(telegramUser)
+});
+const initCheck = Array.from(initParams.entries())
+  .sort(([a], [b]) => a.localeCompare(b))
+  .map(([key, value]) => `${key}=${value}`)
+  .join("\n");
+const initSecret = crypto
+  .createHmac("sha256", "WebAppData")
+  .update(process.env.TELEGRAM_BOT_TOKEN)
+  .digest();
+const initHash = crypto
+  .createHmac("sha256", initSecret)
+  .update(initCheck)
+  .digest("hex");
+initParams.set("hash", initHash);
+const telegramInitData = initParams.toString();
+const telegramLaunchToken = signTelegramLaunch({
+  paymentId: first.data.id,
+  userId: telegramUser.id
+});
+
+const telegramReceipt = await invoke(
+  agent,
+  "POST",
+  {
+    action: "receipt",
+    paymentId: first.data.id,
+    telegramInitData,
+    telegramLaunchToken
+  },
+  { provider: "telegram-miniapp" }
+);
+assert.equal(telegramReceipt.status, 200);
+assert.equal(telegramReceipt.data.ok, true);
+assert.equal(telegramReceipt.data.idempotent, false);
+
+const telegramReceiptReplay = await invoke(
+  agent,
+  "POST",
+  {
+    action: "receipt",
+    paymentId: first.data.id,
+    telegramInitData,
+    telegramLaunchToken
+  },
+  { provider: "telegram-miniapp" }
+);
+assert.equal(telegramReceiptReplay.status, 200);
+assert.equal(telegramReceiptReplay.data.idempotent, true);
 
 globalThis.fetch = telegramFetch;
 delete process.env.TELEGRAM_BOT_TOKEN;
