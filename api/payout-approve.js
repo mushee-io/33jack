@@ -1,4 +1,5 @@
-import { addAuditEvent } from "./_lib/db.js";
+import { addAuditEvent, getBeneficiaryControl, getOrCreateTelegramWorkspace, roleCan } from "./_lib/db.js";
+import { verifyTelegramInitData } from "./_lib/telegram-auth.js";
 import { signPayoutApproval } from "./_lib/payout-approval.js";
 import { getPayoutQuote } from "./_lib/payout-provider.js";
 import { getPayout, savePayout } from "./_lib/payout-store.js";
@@ -8,13 +9,46 @@ export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
 
   try {
-    let payout = await getPayout(req.body?.payoutId);
+    const body = req.body || {};
+    let telegramAuth = null;
+    let workspaceContext = null;
+    if (String(body.channel || "").toLowerCase() === "telegram") {
+      telegramAuth = verifyTelegramInitData(body.telegramInitData, 3600);
+      workspaceContext = await getOrCreateTelegramWorkspace(telegramAuth.user);
+      if (!roleCan(workspaceContext.member.role, "approve")) {
+        return res.status(403).json({ error: "Your workspace role cannot approve payouts" });
+      }
+    }
+
+    let payout = await getPayout(body.payoutId);
     if (!payout) return res.status(404).json({ error: "Payout not found" });
+
+    if (workspaceContext) {
+      if (!payout.workspace_id || String(payout.workspace_id) !== String(workspaceContext.workspace.id)) {
+        return res.status(403).json({ error: "Payout is not available to this workspace" });
+      }
+      const control = await getBeneficiaryControl(
+        workspaceContext.workspace.id,
+        payout.beneficiary?.name,
+        payout.destination_currency
+      );
+      if (control?.status === "blocked") {
+        return res.status(403).json({
+          error: "Beneficiary is blocked by workspace policy",
+          detail: control.note || payout.beneficiary?.name || "Blocked beneficiary"
+        });
+      }
+    }
 
     if (payout.status === "approved") {
       return res.status(200).json({
         payout,
-        approvalToken: signPayoutApproval(payout),
+        approvalToken: signPayoutApproval(payout, {
+          workspaceId: workspaceContext?.workspace?.id || payout.workspace_id || null,
+          channel: telegramAuth ? "telegram-mini-app" : "web",
+          telegramUserId: telegramAuth?.user?.id || null,
+          approverRole: workspaceContext?.member?.role || null
+        }),
         mode: process.env.APPROVAL_HMAC_SECRET ? "secure" : "demo",
         idempotent: true
       });
@@ -87,15 +121,26 @@ export default async function handler(req, res) {
       });
     }
 
-    const approvalToken = signPayoutApproval(payout);
+    const approvalToken = signPayoutApproval(payout, {
+      workspaceId: workspaceContext?.workspace?.id || payout.workspace_id || null,
+      channel: telegramAuth ? "telegram-mini-app" : "web",
+      telegramUserId: telegramAuth?.user?.id || null,
+      approverRole: workspaceContext?.member?.role || null
+    });
     const updated = await savePayout({ ...payout, status: "approved" });
 
-    await addAuditEvent(payout.id, "fiat_payout_approved", "human-approver", {
+    await addAuditEvent(
+      payout.id,
+      "fiat_payout_approved",
+      telegramAuth ? `telegram-user:${telegramAuth.user.id}` : "human-approver",
+      {
       funding_asset: payout.funding_asset,
       funding_amount: Number(payout.funding_amount),
       destination_currency: payout.destination_currency,
       destination_amount: Number(payout.destination_amount),
-      fee_amount: Number(payout.fee_amount)
+      fee_amount: Number(payout.fee_amount),
+      workspace_id: payout.workspace_id || null,
+      approver_role: workspaceContext?.member?.role || null
     });
 
     return res.status(200).json({
