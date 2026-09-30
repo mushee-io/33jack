@@ -779,8 +779,9 @@ export async function handleTelegramWebhook(req, res) {
     }
 
     if (/^\/status\b/i.test(text)) {
-      const telegramUserId = message?.from?.id || chatId;
-      const scoped = await telegramScopedData(telegramUserId, 100);
+      const telegramUser = message?.from || { id: chatId };
+      const telegramUserId = telegramUser.id || chatId;
+      const scoped = await telegramScopedData(telegramUser, 100);
       const payments = scoped.payments;
       const { active, settled, flagged } = compactStatus(payments);
       await sendMessage(
@@ -812,11 +813,15 @@ export async function handleTelegramWebhook(req, res) {
         message,
         corridorMatch?.[1]?.toUpperCase() || "USD"
       );
-      const telegramUserId = message?.from?.id || chatId;
+      const telegramUser = message?.from || { id: chatId };
+      const telegramUserId = telegramUser.id || chatId;
+      const workspaceContext = await getOrCreateTelegramWorkspace(telegramUser);
       if (analysis?.id) {
+        await assignPaymentWorkspace(analysis.id, workspaceContext.workspace.id);
         await addAuditEvent(analysis.id, "telegram_invoice_received", `telegram-user:${telegramUserId}`, {
           telegram_user_id: String(telegramUserId),
           chat_id: String(chatId),
+          workspace_id: workspaceContext.workspace.id,
           invoice_name: analysis.invoice_name || null
         });
       }
@@ -843,8 +848,9 @@ export async function handleTelegramWebhook(req, res) {
       });
     }
 
-    const telegramUserId = message?.from?.id || chatId;
-    const scoped = await telegramScopedData(telegramUserId, 100);
+    const telegramUser = message?.from || { id: chatId };
+    const telegramUserId = telegramUser.id || chatId;
+    const scoped = await telegramScopedData(telegramUser, 100);
     const { active, flagged } = compactStatus(scoped.payments);
     await sendMessage(
       chatId,
