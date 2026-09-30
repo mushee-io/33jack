@@ -249,42 +249,54 @@ function telegramUserIdFromEvent(event) {
   return match?.[1] || "";
 }
 
-async function telegramScopedData(userId, limit = 100) {
-  const [payments, events] = await Promise.all([
-    listPayments(Math.min(Math.max(Number(limit) || 100, 1), 100)),
-    listAuditEvents(null, 500)
-  ]);
+async function telegramScopedData(user, limit = 100) {
+  const context = await getOrCreateTelegramWorkspace(user);
+  const uid = String(user.id);
+  const allEvents = await listAuditEvents(null, 500);
 
-  const uid = String(userId);
-  const ownedIds = new Set(
-    events
+  // Adopt legacy Telegram-linked payments into the user workspace once.
+  const legacyIds = Array.from(new Set(
+    allEvents
       .filter((event) => telegramUserIdFromEvent(event) === uid)
       .map((event) => String(event.payment_id || ""))
       .filter(Boolean)
-  );
+  ));
+  for (const id of legacyIds) {
+    try {
+      const payment = await getPayment(id);
+      if (payment && !payment.workspace_id) {
+        await assignPaymentWorkspace(id, context.workspace.id);
+      }
+    } catch {
+      // Legacy payout ids can also appear in jack_events; ignore non-payment ids.
+    }
+  }
 
-  const ownedPayments = payments.filter((payment) => ownedIds.has(String(payment.id)));
-  const ownedEvents = events
+  const [payments, payouts] = await Promise.all([
+    listPaymentsByWorkspace(context.workspace.id, limit),
+    listPayoutsByWorkspace(context.workspace.id, limit)
+  ]);
+  const recordIds = new Set([
+    ...payments.map((p) => String(p.id)),
+    ...payouts.map((p) => String(p.id))
+  ]);
+  const events = allEvents
     .filter((event) =>
-      ownedIds.has(String(event.payment_id || "")) ||
-      telegramUserIdFromEvent(event) === uid
+      recordIds.has(String(event.payment_id || "")) ||
+      String(event.data?.workspace_id || "") === String(context.workspace.id)
     )
-    .slice(0, 120);
+    .slice(0, 150);
 
-  return { payments: ownedPayments, events: ownedEvents };
+  return { context, payments, payouts, events };
 }
 
-function dashboardPayment(payment, userId, base) {
-  const missing = Array.isArray(payment.risk?.missing_fields)
-    ? payment.risk.missing_fields
-    : [];
+function dashboardPayment(payment, userId, base, role) {
+  const missing = Array.isArray(payment.risk?.missing_fields) ? payment.risk.missing_fields : [];
   const reviewable =
+    roleCan(role, "approve") &&
     ["analyzed", "failed"].includes(String(payment.status || "")) &&
     missing.length === 0;
-  const launchToken = reviewable
-    ? signTelegramLaunch({ paymentId: payment.id, userId })
-    : null;
-
+  const launchToken = reviewable ? signTelegramLaunch({ paymentId: payment.id, userId }) : null;
   return {
     id: payment.id,
     supplier: payment.supplier || null,
@@ -311,17 +323,44 @@ function dashboardPayment(payment, userId, base) {
       missing_fields: missing
     },
     settlement: {
-      amount_usdg: payment.approval?.amount_usdg == null
-        ? null
-        : Number(payment.approval.amount_usdg),
+      amount_usdg: payment.approval?.amount_usdg == null ? null : Number(payment.approval.amount_usdg),
       signature: payment.settlement_signature || null,
       explorer: payment.status === "settled_devnet" && payment.settlement_signature
         ? `https://explorer.solana.com/tx/${payment.settlement_signature}?cluster=devnet`
         : null
     },
+    can_create_fiat_payout:
+      roleCan(role, "operate") &&
+      ["USDG", "USDC", "USDT"].includes(String(payment.source_currency || "").toUpperCase()) &&
+      ["USD", "GBP", "CNY", "INR"].includes(String(payment.destination_currency || "").toUpperCase()),
     review_url: base && launchToken
       ? `${base}/telegram.html?payment=${encodeURIComponent(payment.id)}&launch=${encodeURIComponent(launchToken)}`
       : null
+  };
+}
+
+function dashboardPayout(payout, role) {
+  return {
+    id: payout.id,
+    invoice_ref: payout.invoice_ref || null,
+    funding_asset: payout.funding_asset || null,
+    funding_amount: Number(payout.funding_amount || 0),
+    destination_currency: payout.destination_currency || null,
+    destination_amount: Number(payout.destination_amount || 0),
+    exchange_rate: Number(payout.exchange_rate || 0),
+    fee_amount: Number(payout.fee_amount || 0),
+    status: payout.status || null,
+    receipt_id: payout.receipt_id || null,
+    created_at: payout.created_at || null,
+    updated_at: payout.updated_at || null,
+    beneficiary: payout.beneficiary || {},
+    provider: payout.quote?.provider || "internal_sandbox",
+    provider_status: payout.quote?.providerStatus || null,
+    provider_status_label: payout.quote?.providerStatusLabel || null,
+    provider_transfer_id: payout.quote?.providerTransferId || null,
+    quote_expires_at: payout.quote?.expiresAt || null,
+    can_approve: roleCan(role, "approve") && payout.status === "quoted",
+    can_track: String(payout.quote?.provider || "") === "wise_sandbox" && Boolean(payout.quote?.providerTransferId)
   };
 }
 
@@ -337,10 +376,16 @@ function dashboardEvent(event) {
       to: event.data?.to || null,
       mode: event.data?.mode || null,
       route: event.data?.route || null,
+      provider: event.data?.provider || null,
+      provider_status: event.data?.provider_status || null,
       amount_usdg: event.data?.amount_usdg == null ? null : Number(event.data.amount_usdg),
       signature: event.data?.signature || null
     }
   };
+}
+
+function beneficiaryKey(name, currency) {
+  return `${String(name || "").trim().toLowerCase().replace(/\s+/g, " ")}|${String(currency || "").toUpperCase()}`;
 }
 
 export async function handleTelegramDashboard(req, res) {
@@ -351,13 +396,32 @@ export async function handleTelegramDashboard(req, res) {
     }
 
     const base = appBaseUrl(req);
-    const scoped = await telegramScopedData(auth.user.id, 100);
-    const payments = scoped.payments.map((payment) =>
-      dashboardPayment(payment, auth.user.id, base)
-    );
+    const scoped = await telegramScopedData(auth.user, 100);
+    const role = scoped.context.member.role;
+    const payments = scoped.payments.map((payment) => dashboardPayment(payment, auth.user.id, base, role));
+    const payouts = scoped.payouts.map((payout) => dashboardPayout(payout, role));
     const { active, settled, flagged } = compactStatus(scoped.payments);
     const invoices = payments.filter((payment) => Boolean(payment.invoice));
+    const [members, preferences, controls, allBeneficiaries] = await Promise.all([
+      listWorkspaceMembers(scoped.context.workspace.id),
+      getTelegramPreferences(scoped.context.workspace.id, auth.user.id),
+      listBeneficiaryControls(scoped.context.workspace.id),
+      listBeneficiaries(200)
+    ]);
 
+    const supplierKeys = new Set([
+      ...scoped.payments.map((p) => beneficiaryKey(p.supplier, p.destination_currency)),
+      ...scoped.payouts.map((p) => beneficiaryKey(p.beneficiary?.name, p.destination_currency))
+    ]);
+    const controlMap = new Map(controls.map((row) => [beneficiaryKey(row.supplier_key, row.destination_currency), row]));
+    const beneficiaries = allBeneficiaries
+      .filter((b) => supplierKeys.has(beneficiaryKey(b.supplier_name, b.destination_currency)))
+      .map((b) => ({
+        ...b,
+        control: controlMap.get(beneficiaryKey(b.supplier_name, b.destination_currency)) || null
+      }));
+
+    const policy = getPolicyConfig();
     return res.status(200).json({
       ok: true,
       user: {
@@ -366,15 +430,40 @@ export async function handleTelegramDashboard(req, res) {
         last_name: auth.user.last_name || "",
         username: auth.user.username || ""
       },
+      workspace: {
+        id: scoped.context.workspace.id,
+        name: scoped.context.workspace.name,
+        role,
+        kyb_status: scoped.context.workspace.kyb_status || "not_configured",
+        permissions: {
+          operate: roleCan(role, "operate"),
+          approve: roleCan(role, "approve"),
+          manage_team: roleCan(role, "manage_team"),
+          manage_beneficiaries: roleCan(role, "manage_beneficiaries")
+        }
+      },
       summary: {
         payments: payments.length,
         active: active.length,
         settled: settled.length,
         risk_review: flagged.length,
-        invoices: invoices.length
+        invoices: invoices.length,
+        payouts: payouts.length
       },
       payments,
       invoices,
+      payouts,
+      beneficiaries,
+      team: members,
+      preferences,
+      compliance: {
+        production_money_movement: false,
+        kyb_status: scoped.context.workspace.kyb_status || policy.kybStatus || "not_configured",
+        allowed_currencies: policy.allowedCurrencies,
+        single_limit_usd: policy.singleLimitUsd,
+        kyb_required: policy.kybRequired,
+        blocked_countries_configured: policy.blockedCountries.length > 0
+      },
       history: scoped.events.map(dashboardEvent)
     });
   } catch (error) {
@@ -384,7 +473,6 @@ export async function handleTelegramDashboard(req, res) {
     });
   }
 }
-
 export async function sendTelegramPaymentReceipt({ payment, userId, base = "" }) {
   if (!payment?.id) throw new Error("Payment is required for Telegram receipt");
   if (!userId) throw new Error("Telegram user is required for receipt");
