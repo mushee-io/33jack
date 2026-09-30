@@ -11,6 +11,9 @@ import reconcile from "../api/reconcile.js";
 import payoutQuote from "../api/payout-quote.js";
 import payoutApprove from "../api/payout-approve.js";
 import payoutSettle from "../api/payout-settle.js";
+import whatsappReview from "../api/whatsapp-review.js";
+import { assignPaymentWorkspace, getOrCreateTelegramWorkspace } from "../api/_lib/db.js";
+import { signWhatsAppLaunch } from "../api/_lib/whatsapp-auth.js";
 import { getPayout, savePayout } from "../api/_lib/payout-store.js";
 import { getPayoutQuote, executeExternalPayout, getPayoutProviderReadiness } from "../api/_lib/payout-provider.js";
 import { evaluatePayoutPolicy } from "../api/_lib/policy.js";
@@ -417,9 +420,11 @@ process.env.WHATSAPP_GRAPH_VERSION = "v26.0";
 process.env.PUBLIC_APP_URL = "https://33jack.example";
 
 const whatsappOriginalFetch = globalThis.fetch;
+let whatsappOutboundMessages = 0;
 globalThis.fetch = async (url, options = {}) => {
   const value = String(url);
   if (value.includes("graph.facebook.com") && value.endsWith("/123456789/messages")) {
+    whatsappOutboundMessages += 1;
     return new Response(JSON.stringify({
       messaging_product: "whatsapp",
       contacts: [{ input: "447000000000", wa_id: "447000000000" }],
@@ -477,6 +482,75 @@ const whatsappHello = await invoke(
 );
 assert.equal(whatsappHello.status, 200);
 assert.equal(whatsappHello.data.ok, true);
+
+// WhatsApp exact-payment review must be bound to the originating phone,
+// workspace and approver role, then return a receipt to the same chat.
+const waIdentity = "whatsapp:447000000000";
+const waWorkspace = await getOrCreateTelegramWorkspace({
+  id: waIdentity,
+  first_name: "CI User"
+});
+const waInvoice = Buffer.from(
+  "INVOICE 33J-WA-CI-1\nSupplier: WhatsApp Supplier Ltd\nAmount due: GBP 1250\nTarget: USD",
+  "utf8"
+).toString("base64");
+const waAnalysis = await invoke(analyze, "POST", {
+  fileName: "wa-ci-invoice.txt",
+  mimeType: "text/plain",
+  fileData: waInvoice,
+  corridor: "USD"
+});
+assert.equal(waAnalysis.status, 200);
+await assignPaymentWorkspace(waAnalysis.data.id, waWorkspace.workspace.id);
+
+const waLaunch = signWhatsAppLaunch({
+  paymentId: waAnalysis.data.id,
+  whatsappUserId: "447000000000",
+  workspaceId: waWorkspace.workspace.id
+});
+const waReview = await invoke(
+  whatsappReview,
+  "GET",
+  undefined,
+  { paymentId: waAnalysis.data.id, token: waLaunch }
+);
+assert.equal(waReview.status, 200);
+assert.equal(waReview.data.payment.id, waAnalysis.data.id);
+assert.equal(waReview.data.workspace.canApprove, true);
+
+const badWaReview = await invoke(
+  whatsappReview,
+  "GET",
+  undefined,
+  { paymentId: waAnalysis.data.id, token: waLaunch + "tampered" }
+);
+assert.equal(badWaReview.status, 401);
+
+const waApproval = await invoke(approve, "POST", {
+  paymentId: waAnalysis.data.id,
+  acknowledgements: {},
+  amountUsdg: 1,
+  channel: "whatsapp",
+  whatsappLaunchToken: waLaunch
+});
+assert.equal(waApproval.status, 200);
+assert.ok(waApproval.data.approvalToken);
+
+const outboundBeforeSettlement = whatsappOutboundMessages;
+const waSettlement = await invoke(settle, "POST", {
+  approvalToken: waApproval.data.approvalToken
+});
+assert.equal(waSettlement.status, 200);
+assert.equal(waSettlement.data.mode, "demo");
+assert.equal(waSettlement.data.whatsappReceipt.sent, true);
+assert.ok(whatsappOutboundMessages > outboundBeforeSettlement);
+
+const waReplay = await invoke(settle, "POST", {
+  approvalToken: waApproval.data.approvalToken
+});
+assert.equal(waReplay.status, 200);
+assert.equal(waReplay.data.idempotent, true);
+assert.equal(waReplay.data.whatsappReceipt.idempotent, true);
 
 globalThis.fetch = whatsappOriginalFetch;
 delete process.env.WHATSAPP_ACCESS_TOKEN;
