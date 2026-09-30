@@ -11,7 +11,6 @@ import reconcile from "../api/reconcile.js";
 import payoutQuote from "../api/payout-quote.js";
 import payoutApprove from "../api/payout-approve.js";
 import payoutSettle from "../api/payout-settle.js";
-import whatsappReview from "../api/whatsapp-review.js";
 import { assignPaymentWorkspace, getOrCreateTelegramWorkspace } from "../api/_lib/db.js";
 import { signWhatsAppLaunch } from "../api/_lib/whatsapp-auth.js";
 import { getPayout, savePayout } from "../api/_lib/payout-store.js";
@@ -31,6 +30,11 @@ function invoke(handler, method = "GET", body = undefined, query = undefined, he
     Promise.resolve(handler(req, res)).catch(reject);
   });
 }
+
+const whatsappReview = (req, res) => {
+  req.query = { ...(req.query || {}), provider: "whatsapp-review" };
+  return agent(req, res);
+};
 
 function invokeRaw(handler, method, rawBody, query = {}, headers = {}) {
   return new Promise((resolve, reject) => {
