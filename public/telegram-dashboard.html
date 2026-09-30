@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <title>33Jack · Telegram Dashboard</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--tg-theme-text-color, #111827);
+      background: var(--tg-theme-bg-color, #f4f6f8);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--tg-theme-bg-color, #f4f6f8); color: var(--tg-theme-text-color, #111827); }
+    button, a { -webkit-tap-highlight-color: transparent; }
+    .shell { max-width: 760px; margin: 0 auto; padding: 14px 14px 28px; }
+    .topbar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; }
+    .brand { display:flex; align-items:center; gap:10px; min-width:0; }
+    .mark { width:38px; height:38px; border-radius:50%; display:grid; place-items:center; background:#0b0b0c; color:#fff; font-weight:900; letter-spacing:-.06em; flex:0 0 auto; }
+    .brand strong { display:block; font-size:17px; }
+    .muted { color:var(--tg-theme-hint-color,#6b7280); }
+    .small { font-size:12px; }
+    .refresh { width:auto; min-height:40px; padding:8px 12px; border-radius:12px; border:1px solid rgba(127,127,127,.22); background:var(--tg-theme-secondary-bg-color,#fff); color:var(--tg-theme-text-color,#111827); font-weight:750; cursor:pointer; }
+    .hero { background:var(--tg-theme-secondary-bg-color,#fff); border:1px solid rgba(127,127,127,.16); border-radius:20px; padding:17px; margin-bottom:12px; }
+    .hero h1 { margin:4px 0 4px; font-size:24px; line-height:1.1; letter-spacing:-.035em; }
+    .eyebrow { font-size:10px; font-weight:850; letter-spacing:.13em; color:var(--tg-theme-hint-color,#6b7280); }
+    .metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; margin-top:15px; }
+    .metric { border:1px solid rgba(127,127,127,.14); border-radius:14px; padding:12px; background:rgba(127,127,127,.05); }
+    .metric b { display:block; font-size:22px; margin-top:3px; }
+    .tabs { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; padding:5px; border:1px solid rgba(127,127,127,.15); background:var(--tg-theme-secondary-bg-color,#fff); border-radius:14px; margin-bottom:12px; }
+    .tab { border:0; background:transparent; color:var(--tg-theme-hint-color,#6b7280); min-height:42px; border-radius:10px; font-weight:750; font-size:12px; cursor:pointer; }
+    .tab.active { color:var(--tg-theme-button-text-color,#fff); background:var(--tg-theme-button-color,#111827); }
+    .section { display:none; }
+    .section.active { display:block; }
+    .card { background:var(--tg-theme-secondary-bg-color,#fff); border:1px solid rgba(127,127,127,.16); border-radius:17px; margin-bottom:10px; overflow:hidden; }
+    .card-head { padding:14px 14px 8px; display:flex; justify-content:space-between; gap:10px; align-items:flex-start; }
+    .card-head h3 { margin:2px 0 0; font-size:16px; overflow-wrap:anywhere; }
+    .status { flex:0 0 auto; font-size:10px; font-weight:850; text-transform:uppercase; letter-spacing:.08em; padding:6px 8px; border-radius:999px; background:rgba(127,127,127,.10); }
+    .status.good { color:#168553; background:rgba(25,161,95,.12); }
+    .status.warn { color:#a46700; background:rgba(212,139,0,.12); }
+    .status.bad { color:#bd3440; background:rgba(201,59,71,.12); }
+    .rows { padding:0 14px 10px; }
+    .row { display:flex; justify-content:space-between; gap:14px; padding:8px 0; border-top:1px solid rgba(127,127,127,.10); font-size:13px; }
+    .row span:first-child { color:var(--tg-theme-hint-color,#6b7280); }
+    .row b { text-align:right; overflow-wrap:anywhere; }
+    .actions { display:flex; gap:8px; padding:0 14px 14px; flex-wrap:wrap; }
+    .action { flex:1 1 130px; min-height:42px; border-radius:11px; padding:10px 12px; border:1px solid rgba(127,127,127,.20); background:transparent; color:var(--tg-theme-link-color,#2481cc); font-weight:800; text-decoration:none; text-align:center; cursor:pointer; font-size:13px; }
+    .action.primary { background:var(--tg-theme-button-color,#111827); color:var(--tg-theme-button-text-color,#fff); border-color:transparent; }
+    .riskline { margin:0 14px 12px; padding:10px 11px; border-radius:11px; font-size:12px; background:rgba(25,161,95,.08); color:#168553; }
+    .riskline.warn { background:rgba(212,139,0,.10); color:#9a6200; }
+    .empty { background:var(--tg-theme-secondary-bg-color,#fff); border:1px dashed rgba(127,127,127,.28); border-radius:17px; padding:28px 18px; text-align:center; color:var(--tg-theme-hint-color,#6b7280); }
+    .history { position:relative; padding:4px 14px 8px 30px; }
+    .history:before { content:""; position:absolute; left:16px; top:8px; bottom:10px; width:1px; background:rgba(127,127,127,.22); }
+    .event { position:relative; padding:9px 0 11px; }
+    .event:before { content:""; position:absolute; left:-18px; top:14px; width:8px; height:8px; border-radius:50%; background:var(--tg-theme-button-color,#111827); box-shadow:0 0 0 3px var(--tg-theme-secondary-bg-color,#fff); }
+    .event b { display:block; font-size:13px; }
+    .event .small { margin-top:3px; }
+    .loader { width:24px; height:24px; border-radius:50%; border:3px solid rgba(127,127,127,.22); border-top-color:currentColor; animation:spin .8s linear infinite; margin:20px auto 9px; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .notice { background:var(--tg-theme-secondary-bg-color,#fff); border:1px solid rgba(127,127,127,.16); border-radius:15px; padding:14px; margin-bottom:12px; font-size:13px; line-height:1.45; }
+    .error { border-color:rgba(201,59,71,.30); color:#bd3440; }
+    .footer { display:flex; gap:8px; margin-top:14px; }
+    .footer button { flex:1; min-height:46px; border-radius:13px; border:1px solid rgba(127,127,127,.20); background:var(--tg-theme-secondary-bg-color,#fff); color:var(--tg-theme-link-color,#2481cc); font-weight:800; cursor:pointer; }
+    @media (min-width:620px) {
+      .metrics { grid-template-columns:repeat(4,minmax(0,1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <div class="topbar">
+      <div class="brand">
+        <div class="mark">33</div>
+        <div><strong>33Jack</strong><div class="muted small">Telegram finance operator</div></div>
+      </div>
+      <button id="refreshBtn" class="refresh" type="button">Refresh</button>
+    </div>
+
+    <section class="hero">
+      <div class="eyebrow">CONTROL CENTRE</div>
+      <h1 id="welcome">Your 33Jack activity</h1>
+      <div class="muted small">Payments, invoices, risk state and settlement history — without leaving Telegram.</div>
+      <div class="metrics">
+        <div class="metric"><span class="muted small">Payments</span><b id="mPayments">—</b></div>
+        <div class="metric"><span class="muted small">Active</span><b id="mActive">—</b></div>
+        <div class="metric"><span class="muted small">Settled</span><b id="mSettled">—</b></div>
+        <div class="metric"><span class="muted small">Risk review</span><b id="mRisk">—</b></div>
+      </div>
+    </section>
+
+    <nav class="tabs" aria-label="Dashboard sections">
+      <button class="tab active" data-tab="overview" type="button">Overview</button>
+      <button class="tab" data-tab="payments" type="button">Payments</button>
+      <button class="tab" data-tab="invoices" type="button">Invoices</button>
+      <button class="tab" data-tab="history" type="button">History</button>
+    </nav>
+
+    <div id="loading" class="notice"><div class="loader"></div><div style="text-align:center" class="muted small">Authenticating with Telegram and loading your records…</div></div>
+    <div id="error" class="notice error" style="display:none"></div>
+
+    <section id="overview" class="section active"></section>
+    <section id="payments" class="section"></section>
+    <section id="invoices" class="section"></section>
+    <section id="history" class="section"></section>
+
+    <div class="footer">
+      <button id="chatBtn" type="button">Back to chat</button>
+    </div>
+  </main>
+
+  <script>
+    (() => {
+      const tg = window.Telegram?.WebApp;
+      if (tg) {
+        tg.ready();
+        tg.expand();
+        try { tg.setHeaderColor("secondary_bg_color"); } catch {}
+      }
+
+      const initData = tg?.initData || "";
+      const els = {
+        loading: document.getElementById("loading"),
+        error: document.getElementById("error"),
+        welcome: document.getElementById("welcome"),
+        mPayments: document.getElementById("mPayments"),
+        mActive: document.getElementById("mActive"),
+        mSettled: document.getElementById("mSettled"),
+        mRisk: document.getElementById("mRisk"),
+        overview: document.getElementById("overview"),
+        payments: document.getElementById("payments"),
+        invoices: document.getElementById("invoices"),
+        history: document.getElementById("history"),
+        refreshBtn: document.getElementById("refreshBtn"),
+        chatBtn: document.getElementById("chatBtn")
+      };
+
+      let state = null;
+
+      function esc(value) {
+        return String(value == null ? "" : value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;");
+      }
+
+      function money(value, currency) {
+        const n = Number(value);
+        if (!Number.isFinite(n)) return value == null ? "—" : String(value);
+        return n.toLocaleString(undefined, { maximumFractionDigits: 6 }) + (currency ? " " + currency : "");
+      }
+
+      function date(value) {
+        if (!value) return "—";
+        const d = new Date(value);
+        if (Number.isNaN(d.getTime())) return String(value);
+        return d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+      }
+
+      function statusMeta(status) {
+        const s = String(status || "");
+        if (["settled_demo","settled_devnet","reconciled_external"].includes(s)) return ["good", "Settled"];
+        if (["failed","rejected","attention_external"].includes(s)) return ["bad", s.replaceAll("_"," ")];
+        if (["approved","settling","processing_external","external_created"].includes(s)) return ["warn", s.replaceAll("_"," ")];
+        return ["", s.replaceAll("_"," ") || "Unknown"];
+      }
+
+      function riskText(p) {
+        const r = p.risk || {};
+        const flags = [];
+        if (r.duplicate) flags.push("duplicate");
+        if (r.beneficiary_changed) flags.push("beneficiary changed");
+        if (r.suspicious) flags.push("suspicious");
+        if (Array.isArray(r.missing_fields) && r.missing_fields.length) flags.push("missing: " + r.missing_fields.join(", "));
+        return flags;
+      }
+
+      function paymentCard(p, compact) {
+        const [tone, label] = statusMeta(p.status);
+        const flags = riskText(p);
+        const explorer = p.settlement?.explorer || "";
+        return `
+          <article class="card">
+            <div class="card-head">
+              <div>
+                <div class="eyebrow">${esc(p.invoice || "PAYMENT")}</div>
+                <h3>${esc(p.supplier || "Unknown supplier")}</h3>
+              </div>
+              <span class="status ${tone}">${esc(label)}</span>
+            </div>
+            <div class="rows">
+              <div class="row"><span>Amount</span><b>${esc(money(p.source_amount, p.source_currency))}</b></div>
+              <div class="row"><span>Destination</span><b>${esc(p.destination_amount || p.destination_currency || "—")}</b></div>
+              ${compact ? "" : `<div class="row"><span>Route</span><b>${esc(p.route || "—")}</b></div>`}
+              <div class="row"><span>Updated</span><b>${esc(date(p.updated_at || p.created_at))}</b></div>
+            </div>
+            <div class="riskline ${flags.length ? "warn" : ""}">${flags.length ? "Review: " + esc(flags.join("; ")) : "No active risk blocker"}</div>
+            <div class="actions">
+              ${p.review_url ? '<button class="action primary review" data-url="' + esc(p.review_url) + '" type="button">Review & Pay</button>' : ""}
+              ${explorer ? '<button class="action explorer" data-url="' + esc(explorer) + '" type="button">Solana transaction</button>' : ""}
+            </div>
+          </article>`;
+      }
+
+      function renderOverview() {
+        const payments = state?.payments || [];
+        if (!payments.length) {
+          els.overview.innerHTML = '<div class="empty"><b>No Telegram-linked payments yet.</b><div class="small" style="margin-top:6px">Close this dashboard and send an invoice to the 33Jack bot. It will appear here automatically.</div></div>';
+          return;
+        }
+        els.overview.innerHTML =
+          '<div class="eyebrow" style="margin:2px 2px 8px">RECENT PAYMENTS</div>' +
+          payments.slice(0,3).map((p) => paymentCard(p, true)).join("");
+      }
+
+      function renderPayments() {
+        const payments = state?.payments || [];
+        els.payments.innerHTML = payments.length
+          ? payments.map((p) => paymentCard(p, false)).join("")
+          : '<div class="empty">No payments yet.</div>';
+      }
+
+      function renderInvoices() {
+        const invoices = state?.invoices || [];
+        els.invoices.innerHTML = invoices.length
+          ? invoices.map((p) => {
+              const [tone,label] = statusMeta(p.status);
+              return `
+                <article class="card">
+                  <div class="card-head">
+                    <div><div class="eyebrow">INVOICE</div><h3>${esc(p.invoice || "—")}</h3><div class="muted small">${esc(p.supplier || "Unknown supplier")}</div></div>
+                    <span class="status ${tone}">${esc(label)}</span>
+                  </div>
+                  <div class="rows">
+                    <div class="row"><span>Amount</span><b>${esc(money(p.source_amount,p.source_currency))}</b></div>
+                    <div class="row"><span>Target</span><b>${esc(p.destination_amount || p.destination_currency || "—")}</b></div>
+                    <div class="row"><span>Received</span><b>${esc(date(p.created_at))}</b></div>
+                  </div>
+                  <div class="actions">
+                    ${p.review_url ? '<button class="action primary review" data-url="' + esc(p.review_url) + '" type="button">Review & Pay</button>' : ""}
+                  </div>
+                </article>`;
+            }).join("")
+          : '<div class="empty">No Telegram-linked invoices yet.</div>';
+      }
+
+      function eventLabel(e) {
+        const names = {
+          telegram_invoice_received: "Invoice received in Telegram",
+          invoice_analyzed: "Invoice analyzed",
+          payment_approved: "Payment approved",
+          payment_status_changed: "Payment status changed",
+          transaction_signed: "Solana transaction signed",
+          settlement_confirmed: "Settlement confirmed",
+          telegram_receipt_sent: "Receipt sent to Telegram"
+        };
+        return names[e.event_type] || String(e.event_type || "Activity").replaceAll("_"," ");
+      }
+
+      function renderHistory() {
+        const events = state?.history || [];
+        els.history.innerHTML = events.length
+          ? '<article class="card"><div class="history">' + events.map((e) => {
+              const movement = e.data?.from || e.data?.to ? [e.data?.from, e.data?.to].filter(Boolean).join(" → ") : "";
+              return `<div class="event"><b>${esc(eventLabel(e))}</b><div class="muted small">${esc(date(e.created_at))}${movement ? " · " + esc(movement) : ""}</div></div>`;
+            }).join("") + '</div></article>'
+          : '<div class="empty">No payment history yet.</div>';
+      }
+
+      function bindActions() {
+        document.querySelectorAll(".review").forEach((button) => {
+          button.addEventListener("click", () => {
+            const url = button.dataset.url;
+            if (url) location.href = url;
+          });
+        });
+        document.querySelectorAll(".explorer").forEach((button) => {
+          button.addEventListener("click", () => {
+            const url = button.dataset.url;
+            if (!url) return;
+            if (tg?.openLink) tg.openLink(url);
+            else window.open(url, "_blank", "noopener");
+          });
+        });
+      }
+
+      function render() {
+        const s = state?.summary || {};
+        const first = state?.user?.first_name || "";
+        els.welcome.textContent = first ? "Good to see you, " + first : "Your 33Jack activity";
+        els.mPayments.textContent = String(s.payments ?? 0);
+        els.mActive.textContent = String(s.active ?? 0);
+        els.mSettled.textContent = String(s.settled ?? 0);
+        els.mRisk.textContent = String(s.risk_review ?? 0);
+        renderOverview();
+        renderPayments();
+        renderInvoices();
+        renderHistory();
+        bindActions();
+      }
+
+      async function load() {
+        els.error.style.display = "none";
+        els.loading.style.display = "block";
+        els.refreshBtn.disabled = true;
+        try {
+          if (!initData) throw new Error("Open this dashboard from the 33Jack Telegram bot.");
+          const response = await fetch("/api/agent?provider=telegram-miniapp", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "dashboard", telegramInitData: initData })
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(data.detail || data.error || "Dashboard could not be loaded");
+          state = data;
+          render();
+        } catch (error) {
+          els.error.textContent = error.message || "Could not load 33Jack";
+          els.error.style.display = "block";
+        } finally {
+          els.loading.style.display = "none";
+          els.refreshBtn.disabled = false;
+        }
+      }
+
+      document.querySelectorAll(".tab").forEach((button) => {
+        button.addEventListener("click", () => {
+          document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("active", b === button));
+          document.querySelectorAll(".section").forEach((section) => section.classList.toggle("active", section.id === button.dataset.tab));
+        });
+      });
+
+      els.refreshBtn.addEventListener("click", load);
+      els.chatBtn.addEventListener("click", () => {
+        if (tg?.close) tg.close();
+        else history.back();
+      });
+
+      load();
+    })();
+  </script>
+</body>
+</html>
