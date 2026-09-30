@@ -327,7 +327,7 @@ function dashboardEvent(event) {
 
 export async function handleTelegramDashboard(req, res) {
   try {
-    const auth = verifyTelegramInitData(req.body?.telegramInitData);
+    const auth = verifyTelegramInitData(req.body?.telegramInitData, 3600);
     if (!allowedChat(auth.user.id)) {
       return res.status(403).json({ error: "This Telegram account is not allowed to open 33Jack." });
     }
@@ -414,7 +414,7 @@ export async function sendTelegramPaymentReceipt({ payment, userId, base = "" })
     }]);
   }
   if (base) {
-    buttons.push([{ text: "Open 33Jack", url: base }]);
+    buttons.push([{ text: "Open 33Jack", web_app: { url: dashboardUrl(base) } }]);
   }
 
   await sendMessage(
@@ -529,7 +529,7 @@ export async function handleTelegramWebhook(req, res) {
     if (/^\/help\b/i.test(text)) {
       await sendMessage(
         chatId,
-        "Upload an invoice. 33Jack extracts the instruction, checks duplicate / beneficiary / suspicious signals, prepares a route, then gives you a secure link back to the web control centre for approval."
+        "Upload an invoice. 33Jack extracts the instruction, checks duplicate / beneficiary / suspicious signals, then opens Review & Pay inside Telegram. Use Open 33Jack for your payments, invoices and history."
       );
       return res.status(200).json({ ok: true });
     }
@@ -608,7 +608,7 @@ export async function handleTelegramWebhook(req, res) {
       base
         ? {
             reply_markup: {
-              inline_keyboard: [[{ text: "Open 33Jack", url: base }]]
+              inline_keyboard: [[{ text: "Open 33Jack", web_app: { url: dashboardUrl(base) } }]]
             }
           }
         : {}
