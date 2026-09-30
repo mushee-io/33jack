@@ -44,6 +44,12 @@
     .loader { width:22px; height:22px; margin:8px auto; border:3px solid rgba(127,127,127,.25); border-top-color:currentColor; border-radius:50%; animation:spin .8s linear infinite; }
     @keyframes spin { to { transform:rotate(360deg); } }
     .fine { margin-top:10px; color:var(--tg-theme-hint-color,#6b7280); font-size:11px; line-height:1.5; }
+    .success-card { text-align:center; padding:24px 18px; }
+    .success-icon { width:64px; height:64px; margin:2px auto 14px; display:grid; place-items:center; border-radius:50%; background:rgba(25,161,95,.14); color:#19a15f; font-size:34px; font-weight:900; }
+    .success-card h1 { margin:4px 0 8px; }
+    .success-card .row { text-align:left; }
+    .receipt-state { margin:12px 0 4px; font-size:13px; color:var(--tg-theme-hint-color,#6b7280); }
+    .link-button { display:block; width:100%; text-decoration:none; text-align:center; border-radius:14px; min-height:50px; padding:14px 16px; margin-top:10px; font-size:15px; font-weight:800; background:transparent; color:var(--tg-theme-link-color,#2481cc); border:1px solid rgba(127,127,127,.24); }
     a { color:var(--tg-theme-link-color,#2481cc); }
   </style>
 </head>
@@ -68,6 +74,7 @@
         <div class="row"><span>Bank</span><b id="bank">—</b></div>
         <div class="row"><span>Account</span><b id="account">—</b></div>
         <div class="row"><span>Status</span><b id="status">—</b></div>
+        <div class="row"><span>Execution amount</span><b id="execution">1 USDG · controlled test</b></div>
       </div>
 
       <div class="card">
@@ -85,6 +92,26 @@
       <button id="approveBtn" class="primary" disabled>Approve & Pay</button>
       <button id="closeBtn" class="secondary" type="button">Close</button>
       <div class="fine">If amount, beneficiary, route or stored payment details change after approval, 33Jack rejects the settlement and requires a fresh review.</div>
+    </section>
+
+    <section id="success" class="hidden">
+      <div class="card success-card">
+        <div class="success-icon">✓</div>
+        <div class="eyebrow">PAYMENT COMPLETE</div>
+        <h1>Settlement recorded</h1>
+        <div id="successSummary" class="sub">33Jack completed the approved payment.</div>
+        <div style="margin-top:18px">
+          <div class="row"><span>Supplier</span><b id="successSupplier">—</b></div>
+          <div class="row"><span>Invoice</span><b id="successInvoice">—</b></div>
+          <div class="row"><span>Settlement</span><b id="successAmount">—</b></div>
+          <div class="row"><span>Status</span><b id="successStatus">—</b></div>
+          <div class="row"><span>Reconciled</span><b>✓</b></div>
+          <div class="row"><span>Reference</span><b id="successReference">—</b></div>
+        </div>
+        <div id="receiptState" class="receipt-state">Sending receipt back to Telegram…</div>
+        <a id="explorerBtn" class="link-button hidden" href="#" target="_blank" rel="noreferrer">View Solana transaction</a>
+        <button id="backChatBtn" class="primary" type="button" style="margin-top:10px">Back to chat</button>
+      </div>
     </section>
   </main>
 
@@ -113,6 +140,17 @@
         bank: document.getElementById("bank"),
         account: document.getElementById("account"),
         status: document.getElementById("status"),
+        execution: document.getElementById("execution"),
+        success: document.getElementById("success"),
+        successSummary: document.getElementById("successSummary"),
+        successSupplier: document.getElementById("successSupplier"),
+        successInvoice: document.getElementById("successInvoice"),
+        successAmount: document.getElementById("successAmount"),
+        successStatus: document.getElementById("successStatus"),
+        successReference: document.getElementById("successReference"),
+        receiptState: document.getElementById("receiptState"),
+        explorerBtn: document.getElementById("explorerBtn"),
+        backChatBtn: document.getElementById("backChatBtn"),
         risks: document.getElementById("risks"),
         acks: document.getElementById("acks"),
         message: document.getElementById("message"),
@@ -191,6 +229,7 @@
         els.bank.textContent = p.beneficiary?.bank_name || "—";
         els.account.textContent = p.beneficiary?.account_last4 ? "•••• " + p.beneficiary.account_last4 : "—";
         els.status.textContent = p.status || "—";
+        els.execution.textContent = "1 USDG · controlled test";
 
         els.risks.innerHTML = "";
         els.acks.innerHTML = "";
@@ -210,6 +249,50 @@
         else els.message.className = "notice hidden";
 
         updateApprovalState();
+      }
+
+      async function sendReceipt() {
+        const response = await fetch("/api/agent?provider=telegram-miniapp", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "receipt",
+            paymentId,
+            telegramInitData: initData,
+            telegramLaunchToken: launchToken
+          })
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.detail || data.error || "Telegram receipt could not be sent");
+        return data;
+      }
+
+      function showSuccess(finalPayment, settlement, receiptPosted) {
+        els.content.classList.add("hidden");
+        els.success.classList.remove("hidden");
+        els.successSupplier.textContent = finalPayment?.supplier || "—";
+        els.successInvoice.textContent = finalPayment?.invoice_number || finalPayment?.invoice_name || finalPayment?.id || "—";
+        const settledAmount = Number(finalPayment?.approval?.amount_usdg || 1);
+        els.successAmount.textContent = Number.isFinite(settledAmount) ? settledAmount + " USDG" : "1 USDG";
+        els.successStatus.textContent =
+          finalPayment?.status === "settled_devnet" ? "Settled on Solana Devnet" :
+          finalPayment?.status === "settled_demo" ? "Settled in controlled demo" :
+          finalPayment?.status || settlement?.status || "Processed";
+        els.successReference.textContent = finalPayment?.settlement_signature || settlement?.signature || "—";
+        els.successSummary.textContent = "33Jack verified your Telegram approval, executed the configured settlement path and reconciled the payment.";
+        els.receiptState.textContent = receiptPosted
+          ? "Receipt sent back to the 33Jack Telegram chat ✓"
+          : "Payment completed. The Telegram receipt could not be posted automatically.";
+        const explorer = settlement?.explorer ||
+          (finalPayment?.status === "settled_devnet" && finalPayment?.settlement_signature
+            ? "https://explorer.solana.com/tx/" + encodeURIComponent(finalPayment.settlement_signature) + "?cluster=devnet"
+            : "");
+        if (explorer) {
+          els.explorerBtn.href = explorer;
+          els.explorerBtn.classList.remove("hidden");
+        } else {
+          els.explorerBtn.classList.add("hidden");
+        }
       }
 
       async function loadPayment() {
@@ -260,11 +343,25 @@
 
           const refreshed = await fetch("/api/payment?id=" + encodeURIComponent(payment.id));
           const refreshedData = await refreshed.json().catch(() => ({}));
+          const finalPayment = refreshedData.payment || payment;
           if (refreshed.ok && refreshedData.payment) render(refreshedData.payment);
 
-          els.approveBtn.classList.add("hidden");
-          const suffix = settlement.explorer ? " View the Solana transaction from the 33Jack payment record." : "";
-          showMessage("Payment approved and settlement recorded. Status: " + (refreshedData.payment?.status || settlement.status || settlement.mode || "processed") + "." + suffix, "success");
+          const isFinal = ["settled_demo", "settled_devnet"].includes(String(finalPayment?.status || ""));
+          if (!isFinal) {
+            els.approveBtn.textContent = "Settlement pending";
+            showMessage("The payment was approved and submitted. 33Jack is waiting for settlement confirmation. You can close this window and check /status in the bot.", "");
+            return;
+          }
+
+          let receiptPosted = false;
+          try {
+            await sendReceipt();
+            receiptPosted = true;
+          } catch (receiptError) {
+            console.warn("Telegram receipt failed", receiptError);
+          }
+
+          showSuccess(finalPayment, settlement, receiptPosted);
           if (tg?.HapticFeedback) {
             try { tg.HapticFeedback.notificationOccurred("success"); } catch {}
           }
@@ -279,6 +376,11 @@
       });
 
       els.closeBtn.addEventListener("click", () => {
+        if (tg?.close) tg.close();
+        else history.back();
+      });
+
+      els.backChatBtn.addEventListener("click", () => {
         if (tg?.close) tg.close();
         else history.back();
       });
