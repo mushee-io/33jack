@@ -21,6 +21,8 @@ export function signApproval(input) {
     destinationAmount: String(input.destinationAmount || ""),
     route: String(input.route || ""),
     amountUsdg: Number(input.amountUsdg || 1),
+    channel: String(input.channel || "web"),
+    telegramUserId: input.telegramUserId == null ? null : String(input.telegramUserId),
     expiresAt: Date.now() + Math.min(Number(input.expiresInMs || 300000), 900000)
   };
   const body = encode(payload);
