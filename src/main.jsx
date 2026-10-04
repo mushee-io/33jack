@@ -47,6 +47,7 @@ const nav = [
   ["33Jack Pay", Landmark],
   ["33Jack Crypto", Coins],
   ["33Jack Invoice", FilePlus2],
+  ["Settlement Network", Globe2],
   ["Payments", CircleDollarSign],
   ["Beneficiaries", WalletCards],
   ["Approvals", ShieldCheck],
@@ -657,6 +658,285 @@ function SubunitCards({ onOpen }) {
             </button>
           );
         })}
+      </div>
+    </section>
+  );
+}
+
+function SettlementNetworkWorkspace() {
+  const [form, setForm] = useState({
+    sourceCurrency: "USD",
+    sourceAmount: 10000,
+    destinationCurrency: "GBP",
+    destinationCountry: "GB",
+    priority: "balanced"
+  });
+  const [quote, setQuote] = useState(null);
+  const [health, setHealth] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [executing, setExecuting] = useState(false);
+  const [receipt, setReceipt] = useState(null);
+  const [error, setError] = useState("");
+
+  const currencies = ["USD", "GBP", "EUR", "CNY", "INR"];
+  const destinationCountry = {
+    USD: "US",
+    GBP: "GB",
+    EUR: "EU",
+    CNY: "CN",
+    INR: "IN"
+  };
+
+  useEffect(() => {
+    fetch("/api/settlement-health")
+      .then(readApiResponse)
+      .then((data) => setHealth(data))
+      .catch(() => setHealth(null));
+  }, []);
+
+  function patch(key, value) {
+    setForm((current) => ({
+      ...current,
+      [key]: value,
+      ...(key === "destinationCurrency" ? { destinationCountry: destinationCountry[value] || "" } : {})
+    }));
+    setReceipt(null);
+  }
+
+  async function discoverRoutes(event) {
+    event?.preventDefault?.();
+    setBusy(true);
+    setError("");
+    setReceipt(null);
+    try {
+      const response = await fetch("/api/settlement-quote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...form,
+          sourceAmount: Number(form.sourceAmount || 0),
+          policy: {
+            maxFeeBps: 100,
+            minReliability: 0.97,
+            maxSettlementSeconds: 600,
+            preferredStablecoins: ["USDC"],
+            fallbackEnabled: true
+          }
+        })
+      });
+      const data = await readApiResponse(response);
+      if (!response.ok) throw new Error(data.detail || data.error || "Route discovery failed");
+      setQuote(data);
+    } catch (e) {
+      setError(e.message || "Route discovery failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runDemo(routeId) {
+    if (!quote) return;
+    setExecuting(true);
+    setError("");
+    try {
+      const response = await fetch("/api/settlement-execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quote, routeId, approved: true })
+      });
+      const data = await readApiResponse(response);
+      if (!response.ok) throw new Error(data.detail || data.error || "Demo execution failed");
+      setReceipt(data);
+    } catch (e) {
+      setError(e.message || "Demo execution failed");
+    } finally {
+      setExecuting(false);
+    }
+  }
+
+  const recommended = quote?.recommendedRoute;
+  const alternatives = quote?.alternativeRoutes || [];
+  const networks = health?.networks || [
+    { id: "solana", name: "Solana", mode: "devnet", status: "available", asset: "USDG / USDC" },
+    { id: "morph", name: "Morph", mode: "demo", status: "demo", asset: "USDC" },
+    { id: "base", name: "Base", mode: "demo", status: "demo", asset: "USDC" }
+  ];
+  const providers = health?.providers || [];
+  const money = (amount, currency) => {
+    try {
+      return new Intl.NumberFormat("en-GB", { style: "currency", currency, maximumFractionDigits: 2 }).format(Number(amount || 0));
+    } catch {
+      return `${currency} ${Number(amount || 0).toLocaleString()}`;
+    }
+  };
+
+  return (
+    <section className="workspace-page settlement-workspace">
+      <div className="settlement-hero">
+        <div>
+          <span className="eyebrow">33JACK SETTLEMENT NETWORK · DEMO</span>
+          <h2>Intelligent routing across chains, liquidity and payout rails.</h2>
+          <p>Specify the payment intent. 33JACK evaluates valid settlement paths, applies deterministic policy, scores the routes and recommends the best execution path.</p>
+        </div>
+        <div className="settlement-badge"><Globe2 size={18}/><span>Intent in</span><ArrowRight size={14}/><b>Best route out</b></div>
+      </div>
+
+      <div className="settlement-metrics">
+        <Metric label="Networks" value={networks.length} sub="Solana · Morph · Base"/>
+        <Metric label="Providers" value={providers.length || 3} sub="Adapter-based registry"/>
+        <Metric label="Policy" value="Deterministic" sub="LLM cannot choose or sign"/>
+        <Metric label="Execution" value="Demo-safe" sub="No customer funds move"/>
+      </div>
+
+      {error && <div className="pay-error">{error}</div>}
+
+      <div className="settlement-grid">
+        <form className="card settlement-intent" onSubmit={discoverRoutes}>
+          <div className="pay-form-head">
+            <div><span className="eyebrow">PAYMENT INTENT</span><h3>What must the recipient receive?</h3></div>
+            <span className="mode-tag">DEMO</span>
+          </div>
+
+          <label>Source amount
+            <div className="settlement-input-row">
+              <select value={form.sourceCurrency} onChange={(e) => patch("sourceCurrency", e.target.value)}>
+                {currencies.map((currency) => <option key={currency}>{currency}</option>)}
+              </select>
+              <input type="number" min="1" step="0.01" value={form.sourceAmount} onChange={(e) => patch("sourceAmount", e.target.value)}/>
+            </div>
+          </label>
+
+          <label>Recipient currency
+            <select value={form.destinationCurrency} onChange={(e) => patch("destinationCurrency", e.target.value)}>
+              {currencies.filter((currency) => currency !== form.sourceCurrency).map((currency) => <option key={currency}>{currency}</option>)}
+            </select>
+          </label>
+
+          <label>Priority
+            <select value={form.priority} onChange={(e) => patch("priority", e.target.value)}>
+              <option value="balanced">Balanced</option>
+              <option value="cheapest">Cheapest</option>
+              <option value="fastest">Fastest</option>
+              <option value="reliability">Highest reliability</option>
+              <option value="best_fx">Best FX</option>
+            </select>
+          </label>
+
+          <div className="settlement-policy">
+            <span><ShieldCheck size={15}/> Max fee 1.00%</span>
+            <span><BadgeCheck size={15}/> Min reliability 97%</span>
+            <span><Clock3 size={15}/> Max ETA 10 min</span>
+            <span><RefreshCw size={15}/> Safe fallback enabled</span>
+          </div>
+
+          <button className="primary wide" type="submit" disabled={busy}>
+            <RefreshCw size={16}/>{busy ? " Discovering routes…" : " Discover settlement routes"}
+          </button>
+        </form>
+
+        <div className="card settlement-recommendation">
+          {!recommended ? (
+            <div className="settlement-empty">
+              <Globe2 size={30}/>
+              <span className="eyebrow">SMART ROUTER</span>
+              <h3>Discover routes to see the settlement path.</h3>
+              <p>33JACK compares network, provider, FX, fee, speed and reliability before recommending a path.</p>
+            </div>
+          ) : (
+            <>
+              <div className="pay-form-head">
+                <div><span className="eyebrow">RECOMMENDED ROUTE</span><h3>{recommended.network.name} → {recommended.provider.name}</h3></div>
+                <span className="route-score">{recommended.score}</span>
+              </div>
+
+              <div className="settlement-big">
+                <small>Recipient receives</small>
+                <strong>{money(recommended.destinationAmount, recommended.destinationCurrency)}</strong>
+                <span>{money(recommended.estimatedTotalCost, recommended.sourceCurrency)} estimated total cost</span>
+              </div>
+
+              <div className="settlement-route-line">
+                {recommended.steps.map((step, index) => (
+                  <React.Fragment key={step.type + index}>
+                    <div><small>{step.type}</small><b>{step.label}</b><em>{String(step.mode || "demo").toUpperCase()}</em></div>
+                    {index < recommended.steps.length - 1 && <ArrowRight size={15}/>}
+                  </React.Fragment>
+                ))}
+              </div>
+
+              <div className="settlement-facts">
+                <p><span>ETA</span><b>~{recommended.estimatedSettlementSeconds}s</b></p>
+                <p><span>Reliability</span><b>{(recommended.reliabilityScore * 100).toFixed(2)}%</b></p>
+                <p><span>FX spread</span><b>{recommended.fxSpreadBps} bps</b></p>
+                <p><span>Policy</span><b>{recommended.policy.allowed ? "Passed" : "Blocked"}</b></p>
+              </div>
+
+              <div className="settlement-explain">{quote.explanation}</div>
+
+              <button className="primary wide" type="button" onClick={() => runDemo(recommended.routeId)} disabled={executing}>
+                <Zap size={16}/>{executing ? " Running demo…" : " Run demo settlement"}
+              </button>
+              <small className="demo-warning">Demo only — no customer funds, fiat or onchain assets move from this action.</small>
+            </>
+          )}
+        </div>
+      </div>
+
+      {receipt && (
+        <div className="card settlement-receipt">
+          <div><span className="eyebrow">RECONCILED DEMO RECEIPT</span><h3>{receipt.receipt?.reference}</h3></div>
+          <div className="settlement-timeline">
+            {receipt.timeline?.map((event, index) => (
+              <span key={event.status + index}><CheckCircle2 size={15}/><b>{event.status.replaceAll("_", " ")}</b>{event.detail && <small>{event.detail}</small>}</span>
+            ))}
+          </div>
+          <p>{receipt.warning}</p>
+        </div>
+      )}
+
+      <div className="settlement-lower-grid">
+        <div className="card">
+          <div className="pay-form-head"><div><span className="eyebrow">ALTERNATIVE ROUTES</span><h3>Policy-aware route comparison</h3></div><span>{alternatives.length}</span></div>
+          <div className="settlement-alternatives">
+            {alternatives.length ? alternatives.slice(0, 5).map((route) => (
+              <div key={route.routeId} className={route.policy.allowed ? "settlement-alt" : "settlement-alt blocked"}>
+                <span><b>{route.network.name} → {route.provider.name}</b><small>{route.stablecoin} · {route.mode.toUpperCase()}</small></span>
+                <span><b>{money(route.estimatedTotalCost, route.sourceCurrency)}</b><small>~{route.estimatedSettlementSeconds}s</small></span>
+                <span><b>{(route.reliabilityScore * 100).toFixed(2)}%</b><small>reliability</small></span>
+                <span className="route-score">{route.score}</span>
+              </div>
+            )) : <div className="empty-records">Run route discovery to compare alternatives.</div>}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="pay-form-head"><div><span className="eyebrow">CONNECTED NETWORKS</span><h3>Adapter registry</h3></div><Globe2 size={18}/></div>
+          <div className="settlement-network-list">
+            {networks.map((network) => (
+              <div key={network.id}>
+                <span className="network-dot"/>
+                <span><b>{network.name}</b><small>{network.asset}</small></span>
+                <em className={"mode-tag " + network.mode}>{String(network.mode || network.status).toUpperCase()}</em>
+              </div>
+            ))}
+          </div>
+          <div className="settlement-provider-strip">
+            {(providers.length ? providers : [
+              { id: "wise", name: "Wise Sandbox", mode: "sandbox" },
+              { id: "atlas", name: "Atlas Demo Rail", mode: "demo" },
+              { id: "orbit", name: "Orbit Demo Rail", mode: "demo" }
+            ]).map((provider) => <span key={provider.id}><b>{provider.name}</b><small>{provider.mode.toUpperCase()}</small></span>)}
+          </div>
+        </div>
+      </div>
+
+      <div className="card settlement-api">
+        <div><span className="eyebrow">DEVELOPER API</span><h3>Intent → quote → execution</h3></div>
+        <code>POST /api/settlement-quote</code>
+        <ArrowRight size={15}/>
+        <code>POST /api/settlement-execute</code>
+        <ArrowRight size={15}/>
+        <code>GET /api/settlement-health</code>
       </div>
     </section>
   );
@@ -1558,6 +1838,8 @@ function App() {
             <CryptoWorkspace seed={invoiceSeed} onNewPayment={() => setFlow(true)}/>
           ) : active === "33Jack Invoice" ? (
             <InvoiceWorkspace onUseInvoice={routeInvoiceToPayment} onNewPayment={() => setFlow(true)}/>
+          ) : active === "Settlement Network" ? (
+            <SettlementNetworkWorkspace/>
           ) : (
             <RecordsWorkspace type={active} payments={livePayments} onNewPayment={() => setFlow(true)}/>
           )}
