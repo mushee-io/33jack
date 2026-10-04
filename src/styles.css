@@ -935,3 +935,33 @@ button:disabled {
 .settlement-api{display:flex;align-items:center;gap:10px;padding:16px 18px;overflow-x:auto}.settlement-api>div{margin-right:auto}.settlement-api h3{margin:3px 0 0;font-size:13px}.settlement-api code{white-space:nowrap;padding:8px 10px;border-radius:9px;background:#0a0f17;border:1px solid rgba(255,255,255,.07);color:#aeb9ca;font-size:9px}
 @media(max-width:980px){.settlement-metrics{grid-template-columns:1fr 1fr}.settlement-grid,.settlement-lower-grid{grid-template-columns:1fr}.settlement-hero{flex-direction:column}.settlement-facts{grid-template-columns:1fr 1fr}}
 @media(max-width:640px){.settlement-metrics{grid-template-columns:1fr}.settlement-policy{grid-template-columns:1fr}.settlement-alt{grid-template-columns:1fr 1fr}.settlement-route-line{align-items:stretch}.settlement-route-line svg{display:none}.settlement-big strong{font-size:28px}}
+
+
+/* Voice Pay Beta */
+.voice-pay-workspace{display:flex;flex-direction:column;gap:18px}
+.voice-beta-badge{padding:8px 10px;border:1px solid rgba(255,255,255,.08);border-radius:999px;background:rgba(255,255,255,.03);font-size:9px;letter-spacing:.08em;color:#a8b3c3;white-space:nowrap}
+.voice-beta-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(340px,.9fr);gap:16px}
+.voice-console,.voice-invoice-card{padding:20px;min-height:470px}
+.voice-orb-wrap{display:flex;gap:16px;align-items:center;padding-bottom:18px;border-bottom:1px solid rgba(255,255,255,.06)}
+.voice-orb-wrap h3{margin:4px 0 6px}.voice-orb-wrap p{margin:0;color:#7f8b9d;font-size:10px;line-height:1.55}
+.voice-orb{width:64px;height:64px;border-radius:50%;border:1px solid rgba(123,111,255,.35);background:radial-gradient(circle at 35% 30%,rgba(153,141,255,.55),rgba(88,71,214,.16) 55%,rgba(10,15,24,.95));color:#e8e4ff;display:grid;place-items:center;cursor:pointer;box-shadow:0 0 28px rgba(101,91,255,.15)}
+.voice-orb.listening{animation:voicePulse 1.2s ease-in-out infinite}
+@keyframes voicePulse{0%,100%{transform:scale(1);box-shadow:0 0 24px rgba(101,91,255,.18)}50%{transform:scale(1.05);box-shadow:0 0 42px rgba(101,91,255,.38)}}
+.voice-transcript{display:flex;flex-direction:column;gap:9px;max-height:270px;overflow:auto;padding:16px 0}
+.voice-message{display:grid;grid-template-columns:44px 1fr;gap:9px;align-items:flex-start}
+.voice-message>span{font-size:8px;color:#758196;letter-spacing:.08em;padding-top:8px;display:flex;align-items:center;gap:4px}
+.voice-message p{margin:0;padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.05);color:#aeb9c9;font-size:11px;line-height:1.55}
+.voice-message.user p{background:rgba(101,91,255,.07);border-color:rgba(123,111,255,.14);color:#d6d1ff}
+.voice-command-form{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:auto}
+.voice-command-form input{width:100%;background:#0c111a;border:1px solid rgba(255,255,255,.08);border-radius:12px;color:#e6edf6;padding:12px 13px;outline:none}
+.voice-command-form input:focus{border-color:rgba(123,111,255,.5)}
+.voice-invoice-card{display:flex;flex-direction:column}
+.voice-invoice-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.voice-invoice-head h3{margin:5px 0 0;font-size:18px}
+.voice-amount{display:flex;flex-direction:column;padding:22px 0 18px}.voice-amount small{color:#738095}.voice-amount strong{font-size:38px;letter-spacing:-.045em;margin-top:4px}
+.voice-receipt{margin-bottom:14px}
+.voice-sent-state{display:flex;align-items:center;gap:10px;padding:12px 13px;border-radius:12px;background:rgba(44,196,135,.07);border:1px solid rgba(44,196,135,.13);margin-bottom:10px}
+.voice-sent-state div{display:flex;flex-direction:column}.voice-sent-state b{font-size:11px}.voice-sent-state small{font-size:9px;color:#7f8c9c;margin-top:2px}
+.voice-invoice-card .secondary.wide{margin-top:9px}
+@media(max-width:900px){.voice-beta-grid{grid-template-columns:1fr}.voice-console,.voice-invoice-card{min-height:auto}}
+@media(max-width:640px){.voice-orb-wrap{align-items:flex-start}.voice-command-form{grid-template-columns:1fr}.voice-amount strong{font-size:31px}.voice-invoice-head{flex-direction:column}}
