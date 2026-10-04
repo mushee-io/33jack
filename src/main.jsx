@@ -19,6 +19,8 @@ import {
   Landmark,
   LayoutDashboard,
   MessageCircleMore,
+  Mic,
+  Volume2,
   Plus,
   ReceiptText,
   RefreshCw,
@@ -43,6 +45,7 @@ const samplePayments = [
 const nav = [
   ["Overview", LayoutDashboard],
   ["Agent", Bot],
+  ["Voice Pay β", Mic],
   ["Channels", MessageCircleMore],
   ["33Jack Pay", Landmark],
   ["33Jack Crypto", Coins],
@@ -86,6 +89,14 @@ const subunits = [
     status: "Live",
     icon: FilePlus2,
     bullets: ["Groq extraction", "Invoice creator", "Risk + duplicate checks", "Payment status"]
+  },
+  {
+    name: "Voice Pay β",
+    eyebrow: "VOICE PAYMENT BETA",
+    description: "Say who to pay and how much. 33Jack turns the conversation into a reviewable invoice and waits for explicit approval.",
+    status: "Beta",
+    icon: Mic,
+    bullets: ["Voice intent", "Amount confirmation", "Invoice preview", "Human-approved send"]
   }
 ];
 
@@ -1480,6 +1491,320 @@ function InvoiceWorkspace({ onNewPayment, onUseInvoice }) {
   );
 }
 
+
+function VoicePayWorkspace() {
+  const [phase, setPhase] = useState("idle");
+  const [recipient, setRecipient] = useState("");
+  const [amount, setAmount] = useState(null);
+  const [listening, setListening] = useState(false);
+  const [input, setInput] = useState("");
+  const [error, setError] = useState("");
+  const [messages, setMessages] = useState([
+    { role: "agent", text: 'Say “Pay Jonathan Berger” to start.' }
+  ]);
+  const [reference, setReference] = useState(
+    () => "VOICE-" + Date.now().toString(36).toUpperCase()
+  );
+
+  function speak(text) {
+    try {
+      if (!("speechSynthesis" in window)) return;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1;
+      utterance.pitch = 1;
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      // Voice playback is optional; the on-screen transcript remains authoritative.
+    }
+  }
+
+  function addMessage(role, text) {
+    setMessages((current) => [...current, { role, text }]);
+  }
+
+  function wordsToNumber(text) {
+    const normalized = String(text || "")
+      .toLowerCase()
+      .replace(/[$£€,]/g, " ")
+      .replace(/\b(us|u\.s\.)?\s*dollars?\b/g, " ")
+      .replace(/\bgrand\b/g, " thousand ")
+      .replace(/-/g, " ")
+      .trim();
+
+    const numeric = normalized.match(/\d+(?:\.\d+)?/);
+    if (numeric) return Number(numeric[0]);
+
+    const small = {
+      zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7,
+      eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13,
+      fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18,
+      nineteen: 19, twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60,
+      seventy: 70, eighty: 80, ninety: 90
+    };
+
+    let total = 0;
+    let current = 0;
+    let sawNumberWord = false;
+    for (const word of normalized.split(/\s+/)) {
+      if (word === "and") continue;
+      if (Object.prototype.hasOwnProperty.call(small, word)) {
+        current += small[word];
+        sawNumberWord = true;
+      } else if (word === "hundred") {
+        current = Math.max(current, 1) * 100;
+        sawNumberWord = true;
+      } else if (word === "thousand") {
+        total += Math.max(current, 1) * 1000;
+        current = 0;
+        sawNumberWord = true;
+      } else if (word === "million") {
+        total += Math.max(current, 1) * 1000000;
+        current = 0;
+        sawNumberWord = true;
+      }
+    }
+
+    return sawNumberWord ? total + current : NaN;
+  }
+
+  function formatUsd(value) {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 2
+    }).format(Number(value || 0));
+  }
+
+  function handleIntent(rawText) {
+    const text = String(rawText || "").trim();
+    if (!text) return;
+
+    setError("");
+    addMessage("user", text);
+
+    const payMatch = text.match(/^pay\s+(.+?)(?:\s+(?:please|now))?$/i);
+    if (payMatch) {
+      const name = payMatch[1].trim();
+      setRecipient(name);
+      setAmount(null);
+      setPhase("amount");
+      const reply = "How much?";
+      addMessage("agent", reply);
+      speak(reply);
+      return;
+    }
+
+    if (phase === "amount") {
+      const parsed = wordsToNumber(text);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        const reply = "I did not catch the amount. Try saying two thousand dollars.";
+        addMessage("agent", reply);
+        speak(reply);
+        return;
+      }
+      setAmount(parsed);
+      setPhase("confirm");
+      const reply = formatUsd(parsed) + " to " + recipient + ". Say confirm invoice.";
+      addMessage("agent", reply);
+      speak(reply);
+      return;
+    }
+
+    if (phase === "confirm" && /\b(confirm|confirm invoice|yes)\b/i.test(text)) {
+      setPhase("approve");
+      const reply = "Invoice ready. Review it on screen, then approve to send.";
+      addMessage("agent", reply);
+      speak(reply);
+      return;
+    }
+
+    if (phase === "approve" && /\bapprove\b/i.test(text)) {
+      const reply = "Use the Approve and send button on screen. Voice alone cannot release a payment.";
+      addMessage("agent", reply);
+      speak(reply);
+      return;
+    }
+
+    const reply =
+      phase === "idle"
+        ? 'Start with “Pay Jonathan Berger”.'
+        : phase === "amount"
+          ? "Tell me the amount."
+          : phase === "confirm"
+            ? 'Say “confirm invoice”.'
+            : phase === "approve"
+              ? "Review the invoice and approve it on screen."
+              : "The beta payment is complete. Reset to start another.";
+    addMessage("agent", reply);
+    speak(reply);
+  }
+
+  function listen() {
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Recognition) {
+      setError("Voice recognition is not supported in this browser. Use the command box below.");
+      return;
+    }
+
+    const recognition = new Recognition();
+    recognition.lang = "en-US";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      setListening(true);
+      setError("");
+    };
+    recognition.onerror = () => {
+      setListening(false);
+      setError("I could not hear that clearly. Try again or type the command.");
+    };
+    recognition.onend = () => setListening(false);
+    recognition.onresult = (event) => {
+      const transcript = event.results?.[0]?.[0]?.transcript || "";
+      handleIntent(transcript);
+    };
+
+    recognition.start();
+  }
+
+  function submitTyped(e) {
+    e?.preventDefault();
+    const text = input.trim();
+    if (!text) return;
+    setInput("");
+    handleIntent(text);
+  }
+
+  function approveAndSend() {
+    if (!recipient || !Number.isFinite(Number(amount)) || Number(amount) <= 0) {
+      setError("Recipient and amount are required before approval.");
+      return;
+    }
+    setPhase("sent");
+    const reply = "Sent.";
+    addMessage("agent", reply);
+    speak(reply);
+  }
+
+  function reset() {
+    setPhase("idle");
+    setRecipient("");
+    setAmount(null);
+    setReference("VOICE-" + Date.now().toString(36).toUpperCase());
+    setError("");
+    setInput("");
+    setMessages([{ role: "agent", text: 'Say “Pay Jonathan Berger” to start.' }]);
+  }
+
+  const showInvoice = ["approve", "sent"].includes(phase);
+
+  return (
+    <section className="workspace-page voice-pay-workspace">
+      <div className="section-head">
+        <div>
+          <span className="eyebrow">VOICE PAY · BETA</span>
+          <h2>Say the payment. 33Jack builds the instruction.</h2>
+        </div>
+        <div className="voice-beta-badge">BETA · NO REAL FUNDS</div>
+      </div>
+
+      <div className="voice-beta-grid">
+        <div className="card voice-console">
+          <div className="voice-orb-wrap">
+            <button
+              type="button"
+              className={listening ? "voice-orb listening" : "voice-orb"}
+              onClick={listen}
+              aria-label="Start voice command"
+            >
+              <Mic size={28}/>
+            </button>
+            <div>
+              <span className="eyebrow">{listening ? "LISTENING…" : "VOICE COMMAND"}</span>
+              <h3>{listening ? "Go ahead." : "Tap the mic and speak."}</h3>
+              <p>Example: “Pay Jonathan Berger” → “Two thousand dollars” → “Confirm invoice”.</p>
+            </div>
+          </div>
+
+          {error && <div className="pay-error">{error}</div>}
+
+          <div className="voice-transcript">
+            {messages.map((message, index) => (
+              <div key={index} className={"voice-message " + message.role}>
+                <span>{message.role === "agent" ? <Volume2 size={14}/> : "YOU"}</span>
+                <p>{message.text}</p>
+              </div>
+            ))}
+          </div>
+
+          <form className="voice-command-form" onSubmit={submitTyped}>
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder='Type a command, e.g. "Pay Jonathan Berger"'
+            />
+            <button className="secondary" type="submit"><Send size={15}/> Send</button>
+          </form>
+        </div>
+
+        <div className="card voice-invoice-card">
+          {!showInvoice ? (
+            <div className="pay-placeholder">
+              <ReceiptText size={30}/>
+              <span className="eyebrow">VOICE-GENERATED INVOICE</span>
+              <h3>The invoice appears after you confirm the instruction.</h3>
+              <p>33Jack will not send anything from voice alone. The final release stays behind explicit approval.</p>
+            </div>
+          ) : (
+            <>
+              <div className="voice-invoice-head">
+                <div>
+                  <span className="eyebrow">CONFIRM INVOICE</span>
+                  <h3>{recipient}</h3>
+                </div>
+                <span className={phase === "sent" ? "pill good" : "sandbox-badge"}>
+                  {phase === "sent" ? "SENT · BETA" : "AWAITING APPROVAL"}
+                </span>
+              </div>
+
+              <div className="voice-amount">
+                <small>Payment amount</small>
+                <strong>{formatUsd(amount)}</strong>
+              </div>
+
+              <div className="receipt voice-receipt">
+                <div><span>Recipient</span><b>{recipient}</b></div>
+                <div><span>Amount</span><b>{formatUsd(amount)}</b></div>
+                <div><span>Currency</span><b>USD</b></div>
+                <div><span>Reference</span><b>{reference}</b></div>
+                <div><span>Origin</span><b>Voice instruction</b></div>
+                <div><span>Mode</span><b>33Jack Voice Pay Beta</b></div>
+              </div>
+
+              {phase === "approve" ? (
+                <button type="button" className="primary wide" onClick={approveAndSend}>
+                  <ShieldCheck size={16}/> Approve & send beta payment
+                </button>
+              ) : (
+                <div className="voice-sent-state">
+                  <CheckCircle2 size={22}/>
+                  <div><b>Sent.</b><small>Beta simulation complete. No real funds were moved.</small></div>
+                </div>
+              )}
+
+              <button type="button" className="secondary wide" onClick={reset}>
+                Start another voice payment
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function AgentWorkspace({ onNewPayment }) {
   const [messages, setMessages] = useState([
     { role: "agent", text: "Ask me about payment risk, failures, suppliers, or what needs attention. I am read-only here; money movement stays behind the structured approval flow." }
@@ -1830,6 +2155,8 @@ function App() {
           <footer><Logo/><p>Autonomous cross-border finance for global businesses.</p><span>Colosseum build · Solana</span></footer>
           </> : active === "Agent" ? (
             <AgentWorkspace/>
+          ) : active === "Voice Pay β" ? (
+            <VoicePayWorkspace/>
           ) : active === "Channels" ? (
             <ChannelsWorkspace/>
           ) : active === "33Jack Pay" ? (
