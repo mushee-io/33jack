@@ -6,17 +6,18 @@
 
 **invoice → AI checks → route proposal → exact approval → settlement → reconciliation**
 
-The product is now organized into three operating units behind one agent:
+The product is organized into three operating units behind one agent, plus a dedicated settlement infrastructure layer:
 
 - **33Jack Pay** — stablecoin-funded local-currency payouts
 - **33Jack Crypto** — stablecoin-to-stablecoin vendor / contractor payouts
 - **33Jack Invoice** — invoice creation, extraction, verification and payment-state intelligence
+- **33Jack Settlement Network** — intent-based route discovery and deterministic scoring across chain and payout-provider adapters
 
 This repository is the Colosseum MVP.
 
 ## What works now
 
-- Premium business-finance dashboard with dedicated Pay, Crypto and Invoice operating units
+- Premium business-finance dashboard with dedicated Pay, Crypto, Invoice and Settlement Network sections
 - Real PDF / image / text invoice analysis through Groq when `GROQ_API_KEY` is configured
 - Built-in structured invoice creator with Neon persistence and print/save-PDF workflow
 - Deterministic demo analysis when an AI key is not configured
@@ -65,9 +66,11 @@ Web / WhatsApp / Telegram
             ↓
  Exact Human Approval
             ↓
-     USDG on Solana
+  Settlement Network
             ↓
- Licensed payout / FX rails
+ Smart deterministic router
+            ↓
+ Network + provider adapters
             ↓
  Recipient + reconciliation
 ```
@@ -89,6 +92,60 @@ AI prepares and explains. Deterministic controls constrain money movement.
 | `GET /api/payout-settle?payoutId=...` | Refresh provider state and reconcile external payouts |
 | `POST /api/reconcile?provider=wise` | Verify signed Wise webhooks and reconcile state changes |
 | `POST /api/agent` | Query finance state and prepare controlled payment proposals |
+| `GET /api/settlement-health` | Read network/provider adapter status for the Settlement Network |
+| `POST /api/settlement-quote` | Create a payment intent, evaluate settlement routes and return the recommended route plus alternatives |
+| `POST /api/settlement-execute` | Run the explicitly-approved demo settlement flow and return a reconciled demo receipt |
+
+## Settlement Network
+
+The Settlement Network is a separate infrastructure section underneath the existing 33Jack products.
+
+The business specifies the **payment intent** — source amount/currency, recipient currency/country and priority. 33Jack then evaluates the available network/provider combinations, applies deterministic policy and recommends the best valid route.
+
+Current registry:
+
+- **Solana** — Devnet adapter metadata using the existing settlement environment
+- **Morph** — demo/test adapter, promoted only when real RPC configuration exists
+- **Base** — demo/test adapter, promoted only when real RPC configuration exists
+- **Wise Sandbox** — existing payout-provider environment represented as a provider adapter
+- **Atlas Demo Rail / Orbit Demo Rail** — deterministic demo providers used to prove route discovery and comparison
+
+Route scoring considers:
+
+- total estimated cost
+- FX spread
+- settlement speed
+- network/provider reliability
+- preferred or blocked networks/providers
+- minimum reliability and maximum fee/time policy
+
+The Settlement Network UI is explicitly marked **DEMO** wherever the underlying rail is simulated. It does not fabricate transaction hashes or claim that mainnet/customer funds moved.
+
+Architecture:
+
+```
+Payment Intent
+      ↓
+Risk + policy
+      ↓
+Exact approval
+      ↓
+Settlement Network
+      ↓
+Smart Router
+      ↓
+Solana / Morph / Base
+      ↓
+Wise / provider adapters
+      ↓
+Recipient
+      ↓
+Reconciliation
+```
+
+### Safety boundary
+
+The route engine is deterministic. An LLM may explain the recommendation, but it does not choose or sign a payment. Ambiguous/irreversible production execution must stop for reconciliation instead of blindly falling back and risking a duplicate payment.
 
 ## Environment
 
@@ -105,6 +162,16 @@ SOLANA_RPC_URL=https://api.devnet.solana.com
 SOLANA_DEVNET_USDG_MINT=4F6PM96JJxngmHnZLBh9n58RH4aTVNWvDs2nuwrT5BP7
 SOLANA_SETTLEMENT_RECEIVER=
 SOLANA_DEVNET_PAYER_SECRET_KEY=
+
+MORPH_RPC_URL=
+MORPH_CHAIN_ID=
+MORPH_SETTLEMENT_WALLET=
+MORPH_SETTLEMENT_PRIVATE_KEY=
+
+BASE_RPC_URL=
+BASE_CHAIN_ID=
+BASE_SETTLEMENT_WALLET=
+BASE_SETTLEMENT_PRIVATE_KEY=
 ```
 
 `SOLANA_DEVNET_PAYER_SECRET_KEY` is a JSON array of the 64 secret-key bytes. Use a **Devnet-only wallet**. Never put a Mainnet private key in the project or client bundle.
