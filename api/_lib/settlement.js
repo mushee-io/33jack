@@ -35,7 +35,7 @@ const PROVIDERS = {
   wise: {
     id: "wise",
     name: "Wise Sandbox",
-    mode: process.env.WISE_API_TOKEN ? "sandbox" : "demo",
+    mode: process.env.WISE_SANDBOX_TOKEN ? "sandbox" : "demo",
     status: "available",
     supportedCurrencies: ["USD", "GBP", "EUR", "CNY", "INR"],
     fixedFeeUsd: 1.25,
