@@ -1,4 +1,4 @@
-import { addAuditEvent, listPayments, persistenceMode, savePayment } from "./_lib/db.js";
+import { addAuditEvent, listBeneficiaries, listPayments, persistenceMode, savePayment } from "./_lib/db.js";
 import { listPayouts } from "./_lib/payout-store.js";
 
 export default async function handler(req, res) {
@@ -10,6 +10,14 @@ export default async function handler(req, res) {
       const payouts = await listPayouts(limit);
       return res.status(200).json({
         payouts,
+        persistence: persistenceMode()
+      });
+    }
+
+    if (String(req.query?.kind || "").toLowerCase() === "beneficiaries") {
+      const beneficiaries = await listBeneficiaries(limit);
+      return res.status(200).json({
+        beneficiaries,
         persistence: persistenceMode()
       });
     }
