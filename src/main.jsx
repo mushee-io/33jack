@@ -2073,6 +2073,8 @@ This invoice is a Jack Swipe beta demonstration.`;
                     <ArrowRight size={17}/>
                   </div>
                   <input
+                    id="jack-swipe-control"
+                    data-testid="jack-swipe-control"
                     className="swipe-control"
                     type="range"
                     min="0"
