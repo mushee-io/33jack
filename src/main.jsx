@@ -1902,8 +1902,8 @@ This invoice is a Jack Swipe beta demonstration.`;
     return data;
   }
 
-  async function runSwipePayment() {
-    if (!current || busy || swipe < 92) return;
+  async function runSwipePayment(approvedSwipe = swipe) {
+    if (!current || busy || Number(approvedSwipe) < 92) return;
 
     setBusy(true);
     setError("");
@@ -2083,10 +2083,17 @@ This invoice is a Jack Swipe beta demonstration.`;
                     disabled={busy}
                     aria-label="Swipe to pay invoice"
                     onChange={(e) => setSwipe(Number(e.target.value))}
-                    onPointerUp={runSwipePayment}
-                    onTouchEnd={runSwipePayment}
-                    onKeyUp={(e) => {
-                      if (["Enter", " ", "ArrowRight", "End"].includes(e.key) && swipe >= 92) runSwipePayment();
+                    onPointerUp={() => runSwipePayment(swipe)}
+                    onTouchEnd={() => runSwipePayment(swipe)}
+                    onKeyDown={(e) => {
+                      if (e.key === "End") {
+                        e.preventDefault();
+                        setSwipe(100);
+                        runSwipePayment(100);
+                      } else if ((e.key === "Enter" || e.key === " ") && swipe >= 92) {
+                        e.preventDefault();
+                        runSwipePayment(swipe);
+                      }
                     }}
                   />
                 </div>
