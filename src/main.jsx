@@ -46,6 +46,7 @@ const nav = [
   ["Overview", LayoutDashboard],
   ["Agent", Bot],
   ["Voice Pay β", Mic],
+  ["Jack Swipe β", ReceiptText],
   ["Channels", MessageCircleMore],
   ["33Jack Pay", Landmark],
   ["33Jack Crypto", Coins],
@@ -97,6 +98,14 @@ const subunits = [
     status: "Beta",
     icon: Mic,
     bullets: ["Voice intent", "Amount confirmation", "Invoice preview", "Human-approved send"]
+  },
+  {
+    name: "Jack Swipe β",
+    eyebrow: "SWIPE-TO-PAY BETA",
+    description: "Invoices surface like actionable notifications. Swipe an eligible invoice to let 33Jack approve, settle and return the receipt.",
+    status: "Beta",
+    icon: ReceiptText,
+    bullets: ["Invoice pop-up", "Swipe approval", "Agent settlement", "Instant receipt"]
   }
 ];
 
@@ -1805,6 +1814,317 @@ function VoicePayWorkspace() {
   );
 }
 
+
+function JackSwipeWorkspace({ payments = [], onRefresh, onReview }) {
+  const demoInvoice = useMemo(() => ({
+    id: "jack-swipe-demo",
+    demo: true,
+    supplier: "Heatin Strategy",
+    invoice_number: "HS-2048",
+    source_currency: "USD",
+    source_amount: 2000,
+    destination_currency: "USD",
+    destination_amount: "$2,000",
+    route: "USD → USDG/Solana → USD",
+    risk: { duplicate: false, beneficiary_changed: false, suspicious: false, missing_fields: [] }
+  }), []);
+
+  const [queue, setQueue] = useState([]);
+  const [swipe, setSwipe] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState("Swipe right when you are ready to approve this invoice.");
+  const [receipt, setReceipt] = useState(null);
+  const [reviewPayment, setReviewPayment] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const eligible = (Array.isArray(payments) ? payments : [])
+      .filter((payment) => String(payment?.status || "").toLowerCase() === "analyzed")
+      .slice(0, 8);
+
+    setQueue((current) => {
+      const realCurrent = current.filter((item) => !item.demo);
+      if (eligible.length) return eligible;
+      if (realCurrent.length) return realCurrent;
+      return [demoInvoice];
+    });
+  }, [payments, demoInvoice]);
+
+  const current = queue[0] || null;
+
+  function paymentAmount(payment) {
+    if (!payment) return "—";
+    if (payment.source_amount && payment.source_currency) {
+      return formatMoney(payment.source_amount, payment.source_currency);
+    }
+    return payment.destination_amount || "Amount pending";
+  }
+
+  function textToBase64(value) {
+    const bytes = new TextEncoder().encode(String(value || ""));
+    let binary = "";
+    bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+    return btoa(binary);
+  }
+
+  function hasRiskBlock(payment) {
+    const risk = payment?.risk || {};
+    return Boolean(
+      risk.duplicate ||
+      risk.beneficiary_changed ||
+      risk.suspicious ||
+      (Array.isArray(risk.missing_fields) && risk.missing_fields.length)
+    );
+  }
+
+  async function materialiseDemoInvoice() {
+    const source = `INVOICE JACK-SWIPE-BETA-HS-2048
+Supplier: Heatin Strategy
+Invoice number: HS-2048
+Amount due: USD 2000
+Target payout currency: USD
+Due: 16 October 2026
+Beneficiary details: beta account ending 2048
+This invoice is a Jack Swipe beta demonstration.`;
+
+    const response = await fetch("/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileName: "heatin-strategy-HS-2048.txt",
+        mimeType: "text/plain",
+        fileData: textToBase64(source),
+        corridor: "USD"
+      })
+    });
+    const data = await readApiResponse(response);
+    if (!response.ok) throw new Error(data.detail || data.error || "Could not prepare the beta invoice");
+    return data;
+  }
+
+  async function runSwipePayment() {
+    if (!current || busy || swipe < 92) return;
+
+    setBusy(true);
+    setError("");
+    setReceipt(null);
+    setReviewPayment(null);
+
+    try {
+      setStatus("33Jack agent is verifying the invoice…");
+      let payment = current.demo ? await materialiseDemoInvoice() : current;
+
+      if (hasRiskBlock(payment)) {
+        setReviewPayment(payment);
+        setStatus("This invoice needs a risk review before money can move.");
+        setSwipe(0);
+        return;
+      }
+
+      setStatus("Swipe accepted. Binding your approval to the exact payment…");
+      const approvalResponse = await fetch("/api/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentId: payment.id,
+          acknowledgements: {},
+          amountUsdg: 1
+        })
+      });
+      const approval = await readApiResponse(approvalResponse);
+      if (!approvalResponse.ok) {
+        if (/acknowledg|risk|duplicate|beneficiary|suspicious/i.test(String(approval.detail || approval.error || ""))) {
+          setReviewPayment(payment);
+          setStatus("33Jack stopped the swipe because this invoice needs explicit risk review.");
+          setSwipe(0);
+          return;
+        }
+        throw new Error(approval.detail || approval.error || "Swipe approval failed");
+      }
+
+      setStatus("Approved. 33Jack is executing the beta settlement…");
+      const settlementResponse = await fetch("/api/settle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approvalToken: approval.approvalToken })
+      });
+      const settlement = await readApiResponse(settlementResponse);
+      if (!settlementResponse.ok) {
+        throw new Error(settlement.detail || settlement.error || "Settlement failed");
+      }
+
+      const completed = {
+        supplier: payment.supplier || "Supplier",
+        invoice: payment.invoice_number || payment.invoice_name || payment.id,
+        amount: paymentAmount(payment),
+        route: payment.route || payment.recommended_route || "33Jack settlement route",
+        mode: settlement.mode || approval.mode || "beta",
+        reference: settlement.signature || settlement.transactionSignature || settlement.id || payment.id,
+        explorerUrl: settlement.explorerUrl || settlement.explorer_url || null,
+        status: settlement.status || "completed"
+      };
+
+      setReceipt(completed);
+      setStatus("Completed. Receipt ready.");
+      setQueue((items) => items.slice(1));
+      setSwipe(100);
+      await onRefresh?.();
+    } catch (e) {
+      setError(e.message || "Jack Swipe could not complete this payment.");
+      setStatus("Payment stopped. Nothing else will be attempted until you retry.");
+      setSwipe(0);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function resetForNext() {
+    setReceipt(null);
+    setReviewPayment(null);
+    setError("");
+    setSwipe(0);
+    setStatus("Swipe right when you are ready to approve this invoice.");
+  }
+
+  return (
+    <section className="workspace-page jack-swipe-workspace">
+      <div className="section-head">
+        <div>
+          <span className="eyebrow">JACK SWIPE · BETA</span>
+          <h2>Invoice pops up. Swipe it. Jack handles the payment work.</h2>
+        </div>
+        <div className="voice-beta-badge">BETA · CONTROLLED EXECUTION</div>
+      </div>
+
+      <div className="jack-swipe-grid">
+        <div className="card jack-swipe-stage">
+          <div className="swipe-notification">
+            <div className="swipe-notification-icon"><ReceiptText size={18}/></div>
+            <div>
+              <span className="eyebrow">INVOICE READY</span>
+              <b>{current ? `Pay invoice to ${current.supplier || "supplier"}` : "No invoice waiting"}</b>
+              <small>{current ? `${current.invoice_number || current.invoice_name || current.id} · ${paymentAmount(current)}` : "33Jack will surface the next eligible invoice here."}</small>
+            </div>
+            <span className="swipe-live-dot" />
+          </div>
+
+          {error && <div className="pay-error">{error}</div>}
+
+          {receipt ? (
+            <div className="jack-swipe-complete">
+              <div className="done-icon"><Check size={30}/></div>
+              <span className="eyebrow">JACK SWIPE RECEIPT</span>
+              <h3>Payment completed.</h3>
+              <p>33Jack followed the swipe through approval, settlement and receipt creation.</p>
+              <div className="receipt">
+                <div><span>Supplier</span><b>{receipt.supplier}</b></div>
+                <div><span>Invoice</span><b>{receipt.invoice}</b></div>
+                <div><span>Amount</span><b>{receipt.amount}</b></div>
+                <div><span>Route</span><b>{receipt.route}</b></div>
+                <div><span>Mode</span><b>{receipt.mode}</b></div>
+                <div><span>Reference</span><b>{String(receipt.reference || "Recorded").slice(0, 26)}</b></div>
+              </div>
+              {receipt.explorerUrl && (
+                <a className="secondary wide swipe-receipt-link" href={receipt.explorerUrl} target="_blank" rel="noreferrer">
+                  View settlement receipt <ArrowRight size={15}/>
+                </a>
+              )}
+              <button type="button" className="primary wide" onClick={resetForNext}>
+                Show next invoice
+              </button>
+            </div>
+          ) : current ? (
+            <div className="swipe-invoice-shell">
+              <div className="swipe-invoice-top">
+                <div>
+                  <span className="eyebrow">PAY INVOICE TO</span>
+                  <h3>{current.supplier || "Supplier"}</h3>
+                </div>
+                <span className="sandbox-badge">{current.demo ? "BETA DEMO" : "READY"}</span>
+              </div>
+
+              <div className="swipe-big-amount">
+                <small>Amount due</small>
+                <strong>{paymentAmount(current)}</strong>
+              </div>
+
+              <div className="receipt">
+                <div><span>Invoice</span><b>{current.invoice_number || current.invoice_name || current.id}</b></div>
+                <div><span>Route</span><b>{current.route || current.recommended_route || "Prepared by 33Jack"}</b></div>
+                <div><span>Risk</span><b>{hasRiskBlock(current) ? "Review required" : "Eligible for swipe"}</b></div>
+                <div><span>Action</span><b>Swipe = explicit approval</b></div>
+              </div>
+
+              {reviewPayment ? (
+                <div className="swipe-review-stop">
+                  <TriangleAlert size={18}/>
+                  <div>
+                    <b>Jack stopped this one for review.</b>
+                    <small>Risk warnings cannot be silently acknowledged by a swipe.</small>
+                  </div>
+                  <button type="button" className="secondary" onClick={() => onReview?.(reviewPayment)}>
+                    Open review
+                  </button>
+                </div>
+              ) : (
+                <div className={busy ? "swipe-control-wrap busy" : "swipe-control-wrap"}>
+                  <div className="swipe-track-label">
+                    <span>{busy ? "33Jack is working…" : swipe >= 92 ? "Release to pay" : "Swipe to pay invoice"}</span>
+                    <ArrowRight size={17}/>
+                  </div>
+                  <input
+                    className="swipe-control"
+                    type="range"
+                    min="0"
+                    max="100"
+                    value={swipe}
+                    disabled={busy}
+                    aria-label="Swipe to pay invoice"
+                    onChange={(e) => setSwipe(Number(e.target.value))}
+                    onPointerUp={runSwipePayment}
+                    onTouchEnd={runSwipePayment}
+                    onKeyUp={(e) => {
+                      if (["Enter", " ", "ArrowRight", "End"].includes(e.key) && swipe >= 92) runSwipePayment();
+                    }}
+                  />
+                </div>
+              )}
+
+              <div className="swipe-agent-status">
+                <Sparkles size={15}/>
+                <span>{status}</span>
+              </div>
+              <small className="fine">
+                Beta uses the existing 33Jack approval and settlement APIs. Flagged invoices stop for review; configured rails may execute Devnet/sandbox activity, not production bank payments.
+              </small>
+            </div>
+          ) : (
+            <div className="pay-placeholder">
+              <CheckCircle2 size={30}/>
+              <span className="eyebrow">ALL CLEAR</span>
+              <h3>No eligible invoice is waiting.</h3>
+              <p>When a clean analysed invoice arrives, Jack Swipe can surface it here for one-gesture approval.</p>
+              <button type="button" className="secondary" onClick={onRefresh}><RefreshCw size={15}/> Refresh invoices</button>
+            </div>
+          )}
+        </div>
+
+        <div className="card jack-swipe-explainer">
+          <span className="eyebrow">WHAT THE AGENT DOES AFTER THE SWIPE</span>
+          <h3>One gesture. Full controlled workflow.</h3>
+          <div className="swipe-agent-steps">
+            <div><span>01</span><div><b>Lock invoice</b><small>Bind supplier, amount, route and payment ID.</small></div></div>
+            <div><span>02</span><div><b>Check risk</b><small>Duplicates or beneficiary changes stop for review.</small></div></div>
+            <div><span>03</span><div><b>Approve</b><small>Your swipe becomes the explicit human approval gesture.</small></div></div>
+            <div><span>04</span><div><b>Settle</b><small>Reuse the existing server-side settlement adapter.</small></div></div>
+            <div><span>05</span><div><b>Receipt</b><small>Return status, route and settlement reference immediately.</small></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function AgentWorkspace({ onNewPayment }) {
   const [messages, setMessages] = useState([
     { role: "agent", text: "Ask me about payment risk, failures, suppliers, or what needs attention. I am read-only here; money movement stays behind the structured approval flow." }
@@ -2157,6 +2477,15 @@ function App() {
             <AgentWorkspace/>
           ) : active === "Voice Pay β" ? (
             <VoicePayWorkspace/>
+          ) : active === "Jack Swipe β" ? (
+            <JackSwipeWorkspace
+              payments={livePayments}
+              onRefresh={refreshPayments}
+              onReview={(payment) => {
+                setExternalReview({ payment, context: null });
+                setFlow(true);
+              }}
+            />
           ) : active === "Channels" ? (
             <ChannelsWorkspace/>
           ) : active === "33Jack Pay" ? (
