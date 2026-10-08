@@ -11,6 +11,8 @@ The product is organized into three operating units behind one agent, plus a ded
 - **33Jack Pay** — stablecoin-funded local-currency payouts
 - **33Jack Crypto** — stablecoin-to-stablecoin vendor / contractor payouts
 - **33Jack Invoice** — invoice creation, extraction, verification and payment-state intelligence
+- **Voice Pay (Beta)** — voice instruction → invoice preview → explicit approval
+- **Jack Swipe (Beta)** — invoice notification → swipe approval → settlement → receipt, with risk-stop handoff
 - **33Jack Settlement Network** — intent-based route discovery and deterministic scoring across chain and payout-provider adapters
 
 This repository is the Colosseum MVP.
@@ -33,6 +35,8 @@ This repository is the Colosseum MVP.
 - Automatic Wise status mapping and final reconciliation
 - Deterministic payout policy controls for currencies, country blocks, single-payment limits and KYB gating
 - Agent-generated controlled payment proposals that hand off to the human-approved execution flow
+- Voice Pay Beta for conversational payment preparation with on-screen approval
+- Jack Swipe Beta for one-gesture approval of clean analysed invoices, with automatic stop-and-review for risk flags
 - WhatsApp / Telegram / Web product surfaces
 - Responsive desktop + mobile UI
 - CI build verification
