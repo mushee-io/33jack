@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import OpenAI from "openai";
 import {
   addAuditEvent,
   assignPaymentWorkspace,
@@ -22,6 +23,11 @@ import { getExternalPayoutStatus } from "./payout-provider.js";
 import { signWhatsAppLaunch } from "./whatsapp-auth.js";
 
 const MAX_INVOICE_BYTES = Math.floor(3.2 * 1024 * 1024);
+const MAX_AUDIO_BYTES = 16 * 1024 * 1024;
+const WHATSAPP_AGENT_MODEL = () =>
+  String(process.env.GROQ_AGENT_MODEL || "openai/gpt-oss-20b").trim();
+const WHATSAPP_TRANSCRIPTION_MODEL = () =>
+  String(process.env.GROQ_WHISPER_MODEL || "whisper-large-v3-turbo").trim();
 
 function graphVersion() {
   return String(process.env.WHATSAPP_GRAPH_VERSION || "v26.0").trim();
@@ -51,13 +57,24 @@ function appBaseUrl(req) {
 }
 
 export function whatsappReadiness() {
+  const cloudApiConfigured = Boolean(
+    process.env.WHATSAPP_ACCESS_TOKEN &&
+    process.env.WHATSAPP_PHONE_NUMBER_ID
+  );
+  const verifyTokenConfigured = Boolean(process.env.WHATSAPP_VERIFY_TOKEN);
+  const appSecretConfigured = Boolean(process.env.WHATSAPP_APP_SECRET);
   return {
-    configured: Boolean(
-      process.env.WHATSAPP_ACCESS_TOKEN &&
-      process.env.WHATSAPP_PHONE_NUMBER_ID
-    ),
-    verifyTokenConfigured: Boolean(process.env.WHATSAPP_VERIFY_TOKEN),
-    appSecretConfigured: Boolean(process.env.WHATSAPP_APP_SECRET),
+    configured: cloudApiConfigured,
+    fullyConfigured:
+      cloudApiConfigured &&
+      verifyTokenConfigured &&
+      appSecretConfigured,
+    verifyTokenConfigured,
+    appSecretConfigured,
+    agentConfigured: Boolean(process.env.GROQ_API_KEY),
+    voiceTranscriptionConfigured: Boolean(process.env.GROQ_API_KEY),
+    agentModel: WHATSAPP_AGENT_MODEL(),
+    transcriptionModel: WHATSAPP_TRANSCRIPTION_MODEL(),
     graphVersion: graphVersion()
   };
 }
@@ -183,7 +200,7 @@ async function markRead(messageId) {
   }).catch(() => {});
 }
 
-async function retrieveMedia(mediaId) {
+async function retrieveMedia(mediaId, maxBytes = MAX_INVOICE_BYTES) {
   const meta = await graphRequest(
     `${mediaId}?phone_number_id=${encodeURIComponent(phoneNumberId())}`,
     { method: "GET" }
@@ -197,8 +214,9 @@ async function retrieveMedia(mediaId) {
     throw new Error(`WhatsApp media download failed with HTTP ${response.status}`);
   }
   const bytes = Buffer.from(await response.arrayBuffer());
-  if (bytes.length > MAX_INVOICE_BYTES) {
-    throw new Error("Invoice is over the 3.2 MB 33Jack demo limit");
+  if (bytes.length > maxBytes) {
+    const maxMb = Math.max(1, Math.floor(maxBytes / (1024 * 1024)));
+    throw new Error(`WhatsApp media is over the ${maxMb} MB 33Jack limit`);
   }
   return {
     bytes,
@@ -211,6 +229,11 @@ function messageText(message = {}) {
     message?.text?.body ||
     message?.image?.caption ||
     message?.document?.caption ||
+    message?.interactive?.button_reply?.title ||
+    message?.interactive?.button_reply?.id ||
+    message?.interactive?.list_reply?.title ||
+    message?.interactive?.list_reply?.id ||
+    message?.button?.text ||
     ""
   ).trim();
 }
@@ -233,6 +256,230 @@ function mediaDescriptor(message = {}) {
     };
   }
   return null;
+}
+
+function audioDescriptor(message = {}) {
+  if (!message.audio?.id) return null;
+  const mimeType = String(message.audio.mime_type || "audio/ogg");
+  const extension =
+    mimeType.includes("mpeg") ? "mp3" :
+    mimeType.includes("mp4") ? "m4a" :
+    mimeType.includes("wav") ? "wav" :
+    mimeType.includes("webm") ? "webm" :
+    mimeType.includes("aac") ? "aac" :
+    mimeType.includes("amr") ? "amr" :
+    "ogg";
+  return {
+    id: message.audio.id,
+    fileName: `whatsapp_voice_${message.id || Date.now()}.${extension}`,
+    mimeType
+  };
+}
+
+async function transcribeWhatsAppAudio(message) {
+  const descriptor = audioDescriptor(message);
+  if (!descriptor) return "";
+  const apiKey = String(process.env.GROQ_API_KEY || "").trim();
+  if (!apiKey) {
+    throw new Error("Voice notes need GROQ_API_KEY before WhatsApp transcription can run");
+  }
+
+  const media = await retrieveMedia(descriptor.id, MAX_AUDIO_BYTES);
+  const form = new FormData();
+  form.append(
+    "file",
+    new Blob([media.bytes], { type: descriptor.mimeType || media.mimeType }),
+    descriptor.fileName
+  );
+  form.append("model", WHATSAPP_TRANSCRIPTION_MODEL());
+  form.append("response_format", "json");
+  form.append(
+    "prompt",
+    "33Jack business finance voice command. Preserve supplier names, invoice references, currencies and payment amounts exactly."
+  );
+
+  const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      data?.error?.message ||
+      data?.message ||
+      `Groq voice transcription failed with HTTP ${response.status}`
+    );
+  }
+  const transcript = String(data?.text || "").trim();
+  if (!transcript) throw new Error("The WhatsApp voice note did not contain a usable transcript");
+  return transcript;
+}
+
+function compactAgentPayment(payment = {}) {
+  return {
+    id: payment.id,
+    supplier: payment.supplier || null,
+    invoice: payment.invoice_number || payment.invoice_name || null,
+    source_currency: payment.source_currency || null,
+    source_amount: payment.source_amount == null ? null : Number(payment.source_amount),
+    destination_currency: payment.destination_currency || null,
+    destination_amount: payment.destination_amount || null,
+    route: payment.route || payment.recommended_route || null,
+    status: payment.status || null,
+    risk: {
+      duplicate: Boolean(payment.risk?.duplicate),
+      beneficiary_changed: Boolean(payment.risk?.beneficiary_changed),
+      suspicious: Boolean(payment.risk?.suspicious),
+      missing_fields: Array.isArray(payment.risk?.missing_fields)
+        ? payment.risk.missing_fields
+        : []
+    }
+  };
+}
+
+function normalized(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function findReferencedWorkspacePayment(text, payments = []) {
+  const query = normalized(text);
+  const exact = payments.find((payment) =>
+    [payment.id, payment.invoice_number, payment.invoice_name]
+      .filter(Boolean)
+      .some((value) => query.includes(normalized(value)))
+  );
+  if (exact) return exact;
+
+  const supplierMatches = payments.filter((payment) => {
+    const supplier = normalized(payment.supplier);
+    return supplier && query.includes(supplier);
+  });
+  return supplierMatches.length === 1 ? supplierMatches[0] : null;
+}
+
+function wantsPaymentReview(text) {
+  return /^\s*(pay|approve|review|settle|send)\b/i.test(String(text || "")) ||
+    /\b(prepare|open)\s+(the\s+)?(payment|invoice|review)\b/i.test(String(text || ""));
+}
+
+function paymentReviewBlockers(payment = {}) {
+  const blockers = [];
+  if (payment.risk?.duplicate) blockers.push("duplicate");
+  if (payment.risk?.beneficiary_changed) blockers.push("beneficiary changed");
+  if (payment.risk?.suspicious) blockers.push("suspicious");
+  if (Array.isArray(payment.risk?.missing_fields) && payment.risk.missing_fields.length) {
+    blockers.push(`missing: ${payment.risk.missing_fields.join(", ")}`);
+  }
+  return blockers;
+}
+
+function signedReviewUrl(base, payment, whatsappUserId, workspaceId) {
+  if (!base || !payment?.id) return "";
+  const token = signWhatsAppLaunch({
+    paymentId: payment.id,
+    whatsappUserId,
+    workspaceId
+  });
+  return `${base}/?channel=whatsapp&paymentId=${encodeURIComponent(payment.id)}&waToken=${encodeURIComponent(token)}`;
+}
+
+function scopedBeneficiaries(payments = [], beneficiaries = []) {
+  const keys = new Set(
+    payments.map((payment) =>
+      `${normalized(payment.supplier)}|${String(payment.destination_currency || "").toUpperCase()}`
+    )
+  );
+  return beneficiaries
+    .filter((beneficiary) =>
+      keys.has(
+        `${normalized(beneficiary.supplier_name)}|${String(beneficiary.destination_currency || "").toUpperCase()}`
+      )
+    )
+    .slice(0, 50)
+    .map((beneficiary) => ({
+      supplier: beneficiary.supplier_name,
+      destination_currency: beneficiary.destination_currency,
+      bank_name: beneficiary.bank_name || null,
+      account_last4: beneficiary.account_last4 || null,
+      country: beneficiary.country || null,
+      last_seen_at: beneficiary.last_seen_at || null
+    }));
+}
+
+function deterministicWorkspaceAnswer(question, payments = []) {
+  const query = normalized(question);
+  const { active, settled, flagged } = compactStatus(payments);
+  if (/risk|attention|flag|problem/.test(query)) {
+    if (!flagged.length) return "I do not see any current payment with an active risk flag in this workspace.";
+    return `You have ${flagged.length} payment(s) needing risk review: ${flagged
+      .slice(0, 5)
+      .map((p) => `${p.supplier || p.id} (${p.invoice_number || p.id})`)
+      .join(", ")}.`;
+  }
+  if (/settled|paid|complete/.test(query)) {
+    return `${settled.length} payment(s) are settled in this workspace. ${active.length} remain active or pending.`;
+  }
+  return `This workspace has ${payments.length} payment record(s): ${active.length} active/pending, ${settled.length} settled and ${flagged.length} needing risk review.`;
+}
+
+async function answerWorkspaceAgent(question, workspace, payments, beneficiaries) {
+  if (!process.env.GROQ_API_KEY) {
+    return {
+      text: deterministicWorkspaceAnswer(question, payments),
+      mode: "deterministic"
+    };
+  }
+
+  const client = new OpenAI({
+    apiKey: process.env.GROQ_API_KEY,
+    baseURL: "https://api.groq.com/openai/v1"
+  });
+  const response = await client.responses.create({
+    model: WHATSAPP_AGENT_MODEL(),
+    input: [{
+      role: "system",
+      content: [{
+        type: "input_text",
+        text: `You are 33Jack inside WhatsApp for one business workspace.
+You may read only the supplied workspace payments and beneficiary fingerprints.
+Never claim to have moved, approved, cancelled or settled money from this chat.
+Never reveal full bank account details.
+If the user asks to pay, approve, send or settle an existing invoice, explain that 33Jack can prepare a secure review link and that final approval occurs in the controlled 33Jack flow.
+If the requested payment cannot be identified from the supplied records, ask for the invoice reference or tell the user to send the invoice.
+Call out duplicate, beneficiary-change, suspicious or missing-field risk clearly.
+Be concise, natural and operational. Do not mention internal implementation details.`
+      }]
+    }, {
+      role: "user",
+      content: [{
+        type: "input_text",
+        text: JSON.stringify({
+          workspace: {
+            id: workspace.id,
+            name: workspace.name || null
+          },
+          question,
+          payments: payments.map(compactAgentPayment).slice(0, 50),
+          beneficiaries
+        })
+      }]
+    }]
+  });
+
+  return {
+    text: String(response.output_text || deterministicWorkspaceAnswer(question, payments)).trim(),
+    mode: "groq"
+  };
+}
+
+async function whatsappMessageAlreadySeen(messageId) {
+  if (!messageId) return false;
+  const events = await listAuditEvents(null, 500);
+  return events.some((event) =>
+    event.event_type === "whatsapp_message_received" &&
+    String(event.data?.whatsapp_message_id || "") === String(messageId)
+  );
 }
 
 async function analyzeWhatsAppInvoice(req, message, corridor = "USD") {
@@ -471,12 +718,32 @@ export async function handleWhatsAppWebhook(req, res, rawBody) {
     const from = String(message.from || "").trim();
     if (!from) continue;
 
+    const inboundPhoneNumberId = String(message?.metadata?.phone_number_id || "").trim();
+    if (inboundPhoneNumberId && inboundPhoneNumberId !== phoneNumberId()) {
+      continue;
+    }
+
+    if (await whatsappMessageAlreadySeen(message.id)) {
+      continue;
+    }
+    await addAuditEvent(null, "whatsapp_message_received", "whatsapp-webhook", {
+      whatsapp_message_id: String(message.id || ""),
+      whatsapp_user_id: from,
+      message_type: String(message.type || "unknown"),
+      phone_number_id: inboundPhoneNumberId || phoneNumberId()
+    });
+
     await markRead(message.id);
-    const text = messageText(message);
-    const lower = text.toLowerCase();
+    let text = messageText(message);
     const base = appBaseUrl(req);
 
     try {
+      if (audioDescriptor(message)) {
+        await sendText(from, "Voice note received. 33Jack is transcribing it…");
+        text = await transcribeWhatsAppAudio(message);
+        await sendText(from, `I heard: “${text.slice(0, 500)}”`);
+      }
+      const lower = text.toLowerCase();
       // Reuse the same workspace/RBAC backend as Telegram, but namespace the
       // messaging identity so a WhatsApp phone can never collide with a
       // Telegram numeric user id.
@@ -812,6 +1079,12 @@ export async function handleWhatsAppWebhook(req, res, rawBody) {
             "33Jack WhatsApp",
             "",
             "Send an invoice as PDF, JPG or PNG and I’ll prepare the payment review.",
+            "You can also ask normal finance questions or send a voice note.",
+            "",
+            "Examples:",
+            "“What payments need my attention?”",
+            "“Pay invoice NX-2026-0929-014”",
+            "“Has Nexora been paid?”",
             "",
             "Commands:",
             "STATUS · payment state",
@@ -854,24 +1127,73 @@ export async function handleWhatsAppWebhook(req, res, rawBody) {
           }
         );
 
-        const launchToken = signWhatsAppLaunch({
-          paymentId: analysis.id,
-          whatsappUserId: from,
-          workspaceId: workspace.id
-        });
-        const reviewUrl = base
-          ? `${base}/?channel=whatsapp&paymentId=${encodeURIComponent(analysis.id)}&waToken=${encodeURIComponent(launchToken)}`
-          : base;
+        const reviewUrl = signedReviewUrl(base, analysis, from, workspace.id);
         await sendReviewLink(from, invoiceSummary(analysis), reviewUrl);
         continue;
       }
 
-      const payments = await listPaymentsByWorkspace(workspace.id, 25);
-      const { active, flagged } = compactStatus(payments);
-      await sendText(
-        from,
-        `33Jack is connected. Upload an invoice here and I’ll prepare it for review. There are currently ${active.length} active payment(s) and ${flagged.length} requiring risk review.`
-      );
+      const [payments, allBeneficiaries] = await Promise.all([
+        listPaymentsByWorkspace(workspace.id, 50),
+        listBeneficiaries(200)
+      ]);
+      const beneficiaries = scopedBeneficiaries(payments, allBeneficiaries);
+      const referenced = findReferencedWorkspacePayment(text, payments);
+      const reviewRequested = wantsPaymentReview(text);
+
+      if (reviewRequested && referenced) {
+        const blockers = paymentReviewBlockers(referenced);
+        const state = String(referenced.status || "");
+        if (["settled_demo", "settled_devnet"].includes(state)) {
+          await sendText(
+            from,
+            `${referenced.supplier || "This invoice"} is already settled. Reference: ${referenced.invoice_number || referenced.invoice_name || referenced.id}.`
+          );
+          continue;
+        }
+        if (!["analyzed", "failed"].includes(state)) {
+          await sendText(
+            from,
+            `That payment is currently ${state || "not ready"}. I won’t create a second approval path from WhatsApp.`
+          );
+          continue;
+        }
+
+        const answer = await answerWorkspaceAgent(text, workspace, payments, beneficiaries);
+        const reviewUrl = signedReviewUrl(base, referenced, from, workspace.id);
+        const riskLine = blockers.length
+          ? `\n\nReview required: ${blockers.join("; ")}.`
+          : "\n\nNo active deterministic risk flag is currently recorded.";
+        await sendReviewLink(
+          from,
+          `${answer.text}${riskLine}\n\nInvoice: ${referenced.invoice_number || referenced.invoice_name || referenced.id}`,
+          reviewUrl
+        );
+        await addAuditEvent(
+          referenced.id,
+          "whatsapp_payment_review_requested",
+          `whatsapp-user:${from}`,
+          {
+            workspace_id: workspace.id,
+            whatsapp_user_id: from,
+            role: member.role,
+            agent_mode: answer.mode,
+            risk_flags: blockers
+          }
+        );
+        continue;
+      }
+
+      if (reviewRequested && !referenced) {
+        const answer = await answerWorkspaceAgent(text, workspace, payments, beneficiaries);
+        await sendText(
+          from,
+          `${answer.text}\n\nI need a matching invoice/payment record before I can create a secure approval link. Send the invoice or include its invoice reference.`
+        );
+        continue;
+      }
+
+      const answer = await answerWorkspaceAgent(text, workspace, payments, beneficiaries);
+      await sendText(from, answer.text);
     } catch (error) {
       await sendText(
         from,
