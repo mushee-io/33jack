@@ -213,7 +213,7 @@ function PaymentFlow({ close, onComplete, initialPayment = null, channelContext 
   useEffect(() => {
     if (!initialPayment?.id) return;
     setAnalysis(initialPayment);
-    setFileName(initialPayment.invoice_name || initialPayment.invoice_number || "WhatsApp invoice");
+    setFileName(initialPayment.invoice_name || initialPayment.invoice_number || "Channel invoice");
     setCorridor(String(initialPayment.destination_currency || "USD").toUpperCase());
     setStage("review");
   }, [initialPayment]);
@@ -332,7 +332,12 @@ Please settle this approved supplier invoice.`;
                 channel: "whatsapp",
                 whatsappLaunchToken: channelContext.token
               }
-            : {})
+            : channelContext?.channel === "wechat"
+              ? {
+                  channel: "wechat",
+                  wechatLaunchToken: channelContext.token
+                }
+              : {})
         })
       });
       const approval = await readApiResponse(approvalResponse);
@@ -2304,19 +2309,26 @@ function App() {
     const params = new URLSearchParams(window.location.search);
     const channel = String(params.get("channel") || "").toLowerCase();
     const paymentId = params.get("paymentId");
-    const token = params.get("waToken");
+    const token =
+      channel === "wechat"
+        ? params.get("wxToken")
+        : params.get("waToken");
 
-    if (channel !== "whatsapp" || !paymentId || !token) return;
+    if (!["whatsapp", "wechat"].includes(channel) || !paymentId || !token) return;
 
     let cancelled = false;
     setExternalReviewError("");
     fetch(
-      `/api/agent?provider=whatsapp-review&paymentId=${encodeURIComponent(paymentId)}&token=${encodeURIComponent(token)}`
+      `/api/agent?provider=${channel}-review&paymentId=${encodeURIComponent(paymentId)}&token=${encodeURIComponent(token)}`
     )
       .then(async (response) => {
         const data = await readApiResponse(response);
         if (!response.ok) {
-          throw new Error(data.detail || data.error || "WhatsApp review link could not be verified");
+          throw new Error(
+            data.detail ||
+            data.error ||
+            `${channel === "wechat" ? "WeChat" : "WhatsApp"} review link could not be verified`
+          );
         }
         return data;
       })
@@ -2325,12 +2337,17 @@ function App() {
         setExternalReview({
           payment: data.payment,
           workspace: data.workspace,
-          context: { channel: "whatsapp", token }
+          context: { channel, token }
         });
         setFlow(true);
       })
       .catch((error) => {
-        if (!cancelled) setExternalReviewError(error.message || "WhatsApp review link failed");
+        if (!cancelled) {
+          setExternalReviewError(
+            error.message ||
+            `${channel === "wechat" ? "WeChat" : "WhatsApp"} review link failed`
+          );
+        }
       });
 
     return () => { cancelled = true; };
