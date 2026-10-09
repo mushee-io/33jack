@@ -1,12 +1,13 @@
 import crypto from "node:crypto";
 
 function secret() {
-  return String(
-    process.env.WECHAT_REVIEW_SECRET ||
-    process.env.APPROVAL_HMAC_SECRET ||
-    process.env.WECHAT_TOKEN ||
-    "33jack-wechat-demo-launch-secret-not-for-production"
+  const value = String(
+    process.env.WECHAT_REVIEW_SECRET || process.env.APPROVAL_HMAC_SECRET || ""
   ).trim();
+  if (value.length < 32) {
+    throw new Error("WECHAT_REVIEW_SECRET or APPROVAL_HMAC_SECRET must contain at least 32 characters");
+  }
+  return value;
 }
 
 function encode(value) {
@@ -25,12 +26,19 @@ export function signWeChatLaunch({
   workspaceId,
   expiresInMs = 15 * 60 * 1000
 }) {
+  if (!paymentId || !wechatOpenId || !workspaceId) {
+    throw new Error("WeChat payment, OpenID and workspace are required");
+  }
+  const ttl = Number(expiresInMs);
+  if (!Number.isFinite(ttl) || ttl <= 0) {
+    throw new Error("Invalid WeChat review expiry");
+  }
   const payload = {
     type: "wechat_payment_review",
     paymentId: String(paymentId),
     wechatOpenId: String(wechatOpenId),
     workspaceId: String(workspaceId || ""),
-    expiresAt: Date.now() + Math.min(Number(expiresInMs) || 900000, 900000)
+    expiresAt: Date.now() + Math.min(ttl, 900000)
   };
   const body = encode(payload);
   const signature = crypto
@@ -56,13 +64,15 @@ export function verifyWeChatLaunch(token, paymentId = null) {
   }
 
   const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8"));
-  if (!payload.paymentId || !payload.wechatOpenId || !payload.workspaceId) {
+  if (payload.type !== "wechat_payment_review" || !payload.paymentId || !payload.wechatOpenId || !payload.workspaceId) {
     throw new Error("WeChat review token is incomplete");
   }
   if (paymentId != null && String(payload.paymentId) !== String(paymentId)) {
     throw new Error("WeChat review link does not match this payment");
   }
-  if (!payload.expiresAt || Date.now() > Number(payload.expiresAt)) {
+  if (!Number.isFinite(Number(payload.expiresAt)) ||
+      Number(payload.expiresAt) < Date.now() ||
+      Number(payload.expiresAt) > Date.now() + 15 * 60 * 1000) {
     throw new Error("WeChat payment review link expired");
   }
   return payload;
