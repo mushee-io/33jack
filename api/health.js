@@ -103,7 +103,8 @@ async function whatsappDiagnostic() {
       latestEventTypes: whatsappEvents.slice(0, 12).map((event) => ({
         type: event.event_type,
         at: event.created_at || event.timestamp || null,
-        messageType: event.data?.message_type || null
+        messageType: event.data?.message_type || null,
+        error: String(event.data?.error || "").slice(0, 500) || null
       }))
     }
   };
