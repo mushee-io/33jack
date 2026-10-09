@@ -29,9 +29,6 @@
     },
     "api/settlement-network.js": {
       "maxDuration": 15
-    },
-    "api/voice-transcribe.js": {
-      "maxDuration": 30
     }
   },
   "rewrites": [
