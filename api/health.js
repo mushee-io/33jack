@@ -110,50 +110,6 @@ async function whatsappDiagnostic() {
 }
 
 export default async function handler(req, res) {
-  const repairKey = "wa-repair-33jack-1052556954481401";
-  if (
-    req.method === "GET" &&
-    String(req.query?.diagnostic || "").toLowerCase() === "whatsapp" &&
-    String(req.query?.repair || "") === repairKey
-  ) {
-    const token = String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
-    const version = String(process.env.WHATSAPP_GRAPH_VERSION || "v25.0").trim();
-    const wabaId = String(process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || "1062705723268139").trim();
-
-    if (!token || !wabaId) {
-      return res.status(400).json({ ok: false, error: "WhatsApp credentials are incomplete" });
-    }
-
-    try {
-      const response = await fetch(
-        `https://graph.facebook.com/${version}/${encodeURIComponent(wabaId)}/subscribed_apps`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json"
-          }
-        }
-      );
-      const data = await response.json().catch(() => ({}));
-      return res.status(response.ok ? 200 : response.status).json({
-        ok: response.ok,
-        subscribed: Boolean(data?.success),
-        meta: response.ok ? { success: Boolean(data?.success) } : {
-          code: data?.error?.code ?? null,
-          subcode: data?.error?.error_subcode ?? null,
-          type: data?.error?.type || null,
-          message: data?.error?.message || null
-        }
-      });
-    } catch (error) {
-      return res.status(500).json({
-        ok: false,
-        error: error?.message || "WABA subscription repair failed"
-      });
-    }
-  }
-
   const payoutProvider = getPayoutProviderReadiness();
   const payoutPolicy = getPolicyConfig();
   const telegram = telegramReadiness();
