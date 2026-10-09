@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import {
   addAuditEvent,
   assignPaymentWorkspace,
+  claimChannelMessage,
   createWorkspaceInvite,
   getOrCreateTelegramWorkspace,
   getPayment,
@@ -30,7 +31,30 @@ const WHATSAPP_TRANSCRIPTION_MODEL = () =>
   String(process.env.GROQ_WHISPER_MODEL || "whisper-large-v3-turbo").trim();
 
 function graphVersion() {
-  return String(process.env.WHATSAPP_GRAPH_VERSION || "v26.0").trim();
+  return String(process.env.WHATSAPP_GRAPH_VERSION || "v25.0").trim();
+}
+
+function normalizeWhatsAppRecipient(value) {
+  return String(value || "").replace(/[^0-9]/g, "");
+}
+
+class WhatsAppGraphError extends Error {
+  constructor(data = {}, status = 0) {
+    const meta = data?.error || {};
+    super(
+      meta?.message ||
+      data?.message ||
+      data?.raw ||
+      `WhatsApp Graph API HTTP ${status || "unknown"}`
+    );
+    this.name = "WhatsAppGraphError";
+    this.status = status || 0;
+    this.code = meta?.code ?? null;
+    this.subcode = meta?.error_subcode ?? null;
+    this.type = meta?.type || null;
+    this.details = meta?.error_data?.details || null;
+    this.fbtraceId = meta?.fbtrace_id || null;
+  }
 }
 
 function accessToken() {
@@ -135,24 +159,22 @@ async function graphRequest(path, options = {}) {
   try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
 
   if (!response.ok) {
-    throw new Error(
-      data?.error?.message ||
-      data?.message ||
-      data?.raw ||
-      `WhatsApp Graph API HTTP ${response.status}`
-    );
+    throw new WhatsAppGraphError(data, response.status);
   }
   return data;
 }
 
 async function sendText(to, text, extra = {}) {
+  const recipient = normalizeWhatsAppRecipient(to);
+  if (!recipient) throw new Error("WhatsApp recipient is missing");
+
   try {
     const result = await graphRequest(`${phoneNumberId()}/messages`, {
       method: "POST",
       body: {
         messaging_product: "whatsapp",
         recipient_type: "individual",
-        to: String(to),
+        to: recipient,
         type: "text",
         text: {
           preview_url: false,
@@ -162,11 +184,19 @@ async function sendText(to, text, extra = {}) {
       }
     });
     await addAuditEvent(null, "whatsapp_reply_sent", "whatsapp-outbound", {
-      message_id: result?.messages?.[0]?.id || null
+      message_id: result?.messages?.[0]?.id || null,
+      recipient_last4: recipient.slice(-4)
     }).catch(() => {});
     return result;
   } catch (error) {
     await addAuditEvent(null, "whatsapp_reply_failed", "whatsapp-outbound", {
+      recipient_last4: recipient.slice(-4),
+      status: error?.status ?? null,
+      code: error?.code ?? null,
+      subcode: error?.subcode ?? null,
+      type: error?.type || null,
+      details: error?.details || null,
+      fbtrace_id: error?.fbtraceId || null,
       error: String(error?.message || "Unknown WhatsApp send error").slice(0, 1000)
     }).catch(() => {});
     throw error;
@@ -180,7 +210,7 @@ async function sendReviewLink(to, text, url) {
     body: {
       messaging_product: "whatsapp",
       recipient_type: "individual",
-      to: String(to),
+      to: normalizeWhatsAppRecipient(to),
       type: "interactive",
       interactive: {
         type: "cta_url",
@@ -484,14 +514,6 @@ Be concise, natural and operational. Do not mention internal implementation deta
   };
 }
 
-async function whatsappMessageAlreadySeen(messageId) {
-  if (!messageId) return false;
-  const events = await listAuditEvents(null, 500);
-  return events.some((event) =>
-    event.event_type === "whatsapp_message_received" &&
-    String(event.data?.whatsapp_message_id || "") === String(messageId)
-  );
-}
 
 async function analyzeWhatsAppInvoice(req, message, corridor = "USD") {
   const descriptor = mediaDescriptor(message);
@@ -738,11 +760,18 @@ export async function handleWhatsAppWebhook(req, res, rawBody) {
 
   const statuses = extractStatuses(payload);
   for (const status of statuses) {
+    const statusName = String(status.status || "unknown");
+    const statusId = String(status.id || "");
+    const claimed = statusId
+      ? await claimChannelMessage(`whatsapp-status-${statusName}`, statusId)
+      : true;
+    if (!claimed) continue;
+
     const errors = Array.isArray(status.errors) ? status.errors : [];
     await addAuditEvent(null, "whatsapp_delivery_status", "whatsapp-webhook", {
-      whatsapp_message_id: String(status.id || ""),
-      status: String(status.status || "unknown"),
-      recipient_id: String(status.recipient_id || ""),
+      whatsapp_message_id: statusId,
+      status: statusName,
+      recipient_last4: String(status.recipient_id || "").slice(-4) || null,
       conversation_id: String(status.conversation?.id || ""),
       pricing_model: String(status.pricing?.pricing_model || ""),
       billable: status.pricing?.billable == null ? null : Boolean(status.pricing.billable),
@@ -767,9 +796,11 @@ export async function handleWhatsAppWebhook(req, res, rawBody) {
       continue;
     }
 
-    if (await whatsappMessageAlreadySeen(message.id)) {
+    const claimedMessage = await claimChannelMessage("whatsapp", message.id);
+    if (!claimedMessage) {
       continue;
     }
+
     await addAuditEvent(null, "whatsapp_message_received", "whatsapp-webhook", {
       whatsapp_message_id: String(message.id || ""),
       whatsapp_user_id: from,
@@ -782,6 +813,41 @@ export async function handleWhatsAppWebhook(req, res, rawBody) {
     const base = appBaseUrl(req);
 
     try {
+      const immediate = text.trim().toLowerCase();
+      if (
+        immediate === "help" ||
+        immediate === "/help" ||
+        immediate === "hi" ||
+        immediate === "hello" ||
+        immediate === "start" ||
+        immediate === "/start"
+      ) {
+        await sendText(
+          from,
+          [
+            "33Jack WhatsApp",
+            "",
+            "Send an invoice as PDF, JPG or PNG and I’ll prepare the payment review.",
+            "You can also ask finance questions or send a voice note.",
+            "",
+            "Commands:",
+            "STATUS · payment state",
+            "TEAM · workspace members",
+            "BENEFICIARIES · supplier profiles",
+            "PAYOUTS · fiat payout state",
+            "TRACK <payout-id> · provider status",
+            "",
+            "Money movement still requires the exact human approval flow in 33Jack."
+          ].join("\n")
+        );
+        continue;
+      }
+
+      if (!text && !audioDescriptor(message) && !mediaDescriptor(message)) {
+        await sendText(from, "I can currently handle text, voice notes, PDF invoices and images.");
+        continue;
+      }
+
       if (audioDescriptor(message)) {
         await sendText(from, "Voice note received. 33Jack is transcribing it…");
         text = await transcribeWhatsAppAudio(message);
@@ -1110,42 +1176,6 @@ export async function handleWhatsAppWebhook(req, res, rawBody) {
         continue;
       }
 
-      if (
-        lower === "help" ||
-        lower === "/help" ||
-        lower === "hi" ||
-        lower === "hello" ||
-        lower === "start"
-      ) {
-        await sendText(
-          from,
-          [
-            "33Jack WhatsApp",
-            "",
-            "Send an invoice as PDF, JPG or PNG and I’ll prepare the payment review.",
-            "You can also ask normal finance questions or send a voice note.",
-            "",
-            "Examples:",
-            "“What payments need my attention?”",
-            "“Pay invoice NX-2026-0929-014”",
-            "“Has Nexora been paid?”",
-            "",
-            "Commands:",
-            "STATUS · payment state",
-            "TEAM · workspace members",
-            "INVITE <role> · create team invite",
-            "JOIN <code> · join a workspace",
-            "BENEFICIARIES · supplier profiles",
-            "PAYOUTS · fiat payout state",
-            "TRACK <payout-id> · Wise/provider status",
-            "NOTIFY · notification settings",
-            "",
-            "Money movement still requires the exact human approval flow in 33Jack."
-          ].join("\n")
-        );
-        continue;
-      }
-
       if (mediaDescriptor(message)) {
         await sendText(from, "Invoice received. 33Jack is extracting and checking it…");
         const corridorMatch = text.match(/\b(USD|GBP|CNY|INR)\b/i);
@@ -1239,10 +1269,20 @@ export async function handleWhatsAppWebhook(req, res, rawBody) {
       const answer = await answerWorkspaceAgent(text, workspace, payments, beneficiaries);
       await sendText(from, answer.text);
     } catch (error) {
-      await sendText(
-        from,
-        `33Jack could not process that request: ${error?.message || "Unknown error"}`
-      ).catch(() => {});
+      await addAuditEvent(null, "whatsapp_processing_failed", "whatsapp-webhook", {
+        message_id: String(message.id || ""),
+        sender_last4: from.slice(-4),
+        error: String(error?.message || "Unknown error").slice(0, 1000),
+        graph_code: error?.code ?? null,
+        graph_subcode: error?.subcode ?? null
+      }).catch(() => {});
+
+      if (error?.name !== "WhatsAppGraphError") {
+        await sendText(
+          from,
+          `33Jack could not process that request: ${error?.message || "Unknown error"}`
+        ).catch(() => {});
+      }
     }
   }
 
