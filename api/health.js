@@ -139,6 +139,22 @@ async function whatsappDiagnostic() {
       inboundMessages: inbound.length,
       failures: failures.length,
       latestInboundAt: inbound[0]?.created_at || inbound[0]?.timestamp || null,
+      latestInboundSenderLast4: (() => {
+        let data = inbound[0]?.data || {};
+        if (typeof data === "string") {
+          try { data = JSON.parse(data); } catch { data = {}; }
+        }
+        const id = String(data?.whatsapp_user_id || "");
+        return id ? id.slice(-4) : null;
+      })(),
+      latestReplyRecipientLast4: (() => {
+        const reply = whatsappEvents.find((event) => event.event_type === "whatsapp_reply_sent");
+        let data = reply?.data || {};
+        if (typeof data === "string") {
+          try { data = JSON.parse(data); } catch { data = {}; }
+        }
+        return data?.recipient_last4 || null;
+      })(),
       latestEventTypes: whatsappEvents.slice(0, 12).map((event) => {
         let data = event.data || {};
         if (typeof data === "string") {
