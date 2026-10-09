@@ -7,7 +7,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:smoke": "node scripts/smoke.mjs",
-    "telegram:webhook": "node scripts/setup-telegram.mjs"
+    "telegram:webhook": "node scripts/setup-telegram.mjs",
+    "test:wechat": "node scripts/wechat-smoke.mjs"
   },
   "dependencies": {
     "@solana/spl-token": "^0.4.14",
@@ -23,7 +24,8 @@
     "bs58": "^6.0.0",
     "pdfjs-dist": "3.11.174",
     "rpc-websockets": "10.0.0",
-    "uuid": "8.3.2"
+    "uuid": "8.3.2",
+    "@vercel/functions": "^3.1.0"
   },
   "devDependencies": {},
   "overrides": {
