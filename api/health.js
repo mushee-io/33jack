@@ -9,7 +9,7 @@ import { listAuditEvents } from "./_lib/db.js";
 async function whatsappDiagnostic() {
   const token = String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
   const phoneId = String(process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
-  const version = String(process.env.WHATSAPP_GRAPH_VERSION || "v25.0").trim();
+  const version = String(process.env.WHATSAPP_GRAPH_VERSION || "v26.0").trim();
 
   let phoneProbe = { ok: false, reason: "missing_credentials" };
   if (token && phoneId) {
@@ -109,7 +109,12 @@ async function whatsappDiagnostic() {
           type: event.event_type,
           at: event.created_at || event.timestamp || null,
           messageType: data?.message_type || null,
-          error: String(data?.error || "").slice(0, 500) || null,
+          deliveryStatus: data?.status || null,
+          recipientId: data?.recipient_id ? "••••" + String(data.recipient_id).slice(-4) : null,
+          errorCode: data?.error_code ?? null,
+          errorTitle: data?.error_title || null,
+          errorMessage: data?.error_message || data?.error || null,
+          errorDetails: data?.error_details || null,
           dataKeys: data && typeof data === "object" ? Object.keys(data).slice(0, 12) : []
         };
       })
@@ -118,6 +123,50 @@ async function whatsappDiagnostic() {
 }
 
 export default async function handler(req, res) {
+  if (
+    req.method === "GET" &&
+    String(req.query?.diagnostic || "").toLowerCase() === "whatsapp" &&
+    String(req.query?.probe || "") === "deliver-new"
+  ) {
+    const token = String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
+    const phoneId = String(process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
+    const version = String(process.env.WHATSAPP_GRAPH_VERSION || "v26.0").trim();
+    try {
+      const response = await fetch(
+        `https://graph.facebook.com/${version}/${encodeURIComponent(phoneId)}/messages`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            messaging_product: "whatsapp",
+            to: "447835338831",
+            type: "template",
+            template: { name: "hello_world", language: { code: "en_US" } }
+          })
+        }
+      );
+      const data = await response.json().catch(() => ({}));
+      return res.status(response.ok ? 200 : response.status).json({
+        ok: response.ok,
+        accepted: Boolean(data?.messages?.[0]?.id),
+        messageId: data?.messages?.[0]?.id ? "set" : null,
+        messageStatus: data?.messages?.[0]?.message_status || null,
+        error: response.ok ? null : {
+          code: data?.error?.code ?? null,
+          subcode: data?.error?.error_subcode ?? null,
+          type: data?.error?.type || null,
+          message: data?.error?.message || null,
+          details: data?.error?.error_data?.details || null
+        }
+      });
+    } catch (error) {
+      return res.status(500).json({ ok: false, error: error?.message || "probe failed" });
+    }
+  }
+
   const payoutProvider = getPayoutProviderReadiness();
   const payoutPolicy = getPolicyConfig();
   const telegram = telegramReadiness();
