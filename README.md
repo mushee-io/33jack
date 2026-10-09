@@ -38,6 +38,8 @@ This repository is the Colosseum MVP.
 - Voice Pay Beta for conversational payment preparation with on-screen approval
 - Jack Swipe Beta for one-gesture approval of clean analysed invoices, with automatic stop-and-review for risk flags
 - WhatsApp / Telegram / Web product surfaces
+- Workspace-scoped WhatsApp AI chat for finance questions and payment-review requests
+- WhatsApp voice-note transcription through Groq Whisper before the same controlled agent flow
 - Responsive desktop + mobile UI
 - CI build verification
 
@@ -159,6 +161,7 @@ Copy `.env.example` to `.env.local`.
 GROQ_API_KEY=
 GROQ_VISION_MODEL=qwen/qwen3.8-27b
 GROQ_AGENT_MODEL=openai/gpt-oss-20b
+GROQ_WHISPER_MODEL=whisper-large-v3-turbo
 
 DATABASE_URL=
 
@@ -243,6 +246,10 @@ The channel adapter supports:
 - Meta webhook verification through `hub.verify_token`
 - `X-Hub-Signature-256` HMAC verification using the Meta app secret
 - inbound PDF, JPG and PNG invoice messages
+- inbound WhatsApp voice notes transcribed with Groq Whisper
+- normal workspace-scoped finance questions through the 33Jack Groq agent
+- natural payment-review requests such as `Pay invoice NX-2026-0929-014`, returning a signed review link when a matching record exists
+- webhook message-id deduplication and configured phone-number scoping to make Meta retries safe
 - secure media retrieval through the WhatsApp Cloud API
 - the same Groq invoice extraction and deterministic risk controls as the web app
 - phone-namespaced workspaces so one WhatsApp user cannot read another user's finance state
@@ -278,6 +285,9 @@ Subscribe the WhatsApp app to the `messages` webhook field. Keep access tokens a
 
 ```text
 HELP
+What payments need my attention?
+Pay invoice NX-2026-0929-014
+Has Nexora been paid?
 STATUS
 TEAM
 INVITE approver
