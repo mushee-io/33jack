@@ -43,6 +43,40 @@ async function whatsappDiagnostic() {
     }
   }
 
+  const wabaId = String(process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || "1062705723268139").trim();
+  let wabaSubscription = { ok: false, reason: "missing_credentials" };
+  if (token && wabaId) {
+    try {
+      const response = await fetch(
+        `https://graph.facebook.com/${version}/${encodeURIComponent(wabaId)}/subscribed_apps`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const data = await response.json().catch(() => ({}));
+      wabaSubscription = response.ok && !data?.error
+        ? {
+            ok: true,
+            httpStatus: response.status,
+            subscribedAppCount: Array.isArray(data?.data) ? data.data.length : 0,
+            hasSubscriptions: Array.isArray(data?.data) && data.data.length > 0,
+            appIds: Array.isArray(data?.data)
+              ? data.data.map((item) => String(item?.whatsapp_business_api_data?.id || item?.id || "")).filter(Boolean)
+              : []
+          }
+        : {
+            ok: false,
+            httpStatus: response.status,
+            error: {
+              code: data?.error?.code ?? null,
+              subcode: data?.error?.error_subcode ?? null,
+              type: data?.error?.type || null,
+              message: data?.error?.message || null
+            }
+          };
+    } catch (error) {
+      wabaSubscription = { ok: false, reason: "probe_failed", message: error?.message || "Unknown error" };
+    }
+  }
+
   let events = [];
   try {
     events = await listAuditEvents(null, 300);
@@ -60,6 +94,7 @@ async function whatsappDiagnostic() {
 
   return {
     phoneProbe,
+    wabaSubscription,
     audit: {
       whatsappEvents: whatsappEvents.length,
       inboundMessages: inbound.length,
