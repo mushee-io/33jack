@@ -11,7 +11,7 @@ import reconcile from "../api/reconcile.js";
 import payoutQuote from "../api/payout-quote.js";
 import payoutApprove from "../api/payout-approve.js";
 import payoutSettle from "../api/payout-settle.js";
-import { assignPaymentWorkspace, getOrCreateTelegramWorkspace } from "../api/_lib/db.js";
+import { assignPaymentWorkspace, getOrCreateTelegramWorkspace, listAuditEvents } from "../api/_lib/db.js";
 import { signWhatsAppLaunch } from "../api/_lib/whatsapp-auth.js";
 import { getPayout, savePayout } from "../api/_lib/payout-store.js";
 import { getPayoutQuote, executeExternalPayout, getPayoutProviderReadiness } from "../api/_lib/payout-provider.js";
@@ -486,6 +486,66 @@ const whatsappHello = await invoke(
 );
 assert.equal(whatsappHello.status, 200);
 assert.equal(whatsappHello.data.ok, true);
+
+// Duplicate deliveries of the same WhatsApp message id must be claimed once,
+// even if Meta retries or multiple app subscriptions point at the same webhook.
+const outboundAfterFirstHello = whatsappOutboundMessages;
+const whatsappDuplicate = await invoke(
+  agent,
+  "POST",
+  whatsappPayload,
+  { provider: "whatsapp" },
+  { "x-hub-signature-256": whatsappSignature }
+);
+assert.equal(whatsappDuplicate.status, 200);
+assert.equal(whatsappOutboundMessages, outboundAfterFirstHello);
+
+const whatsappStatusPayload = {
+  object: "whatsapp_business_account",
+  entry: [{
+    id: "ci-waba",
+    changes: [{
+      field: "messages",
+      value: {
+        messaging_product: "whatsapp",
+        metadata: {
+          display_phone_number: "441234567890",
+          phone_number_id: "123456789"
+        },
+        statuses: [{
+          id: "wamid.ci",
+          status: "delivered",
+          timestamp: "1780000001",
+          recipient_id: "447000000000",
+          conversation: { id: "ci-conversation" },
+          pricing: { billable: false, pricing_model: "PMP" }
+        }]
+      }
+    }]
+  }]
+};
+const whatsappStatusRaw = JSON.stringify(whatsappStatusPayload);
+const whatsappStatusSignature = "sha256=" + crypto
+  .createHmac("sha256", process.env.WHATSAPP_APP_SECRET)
+  .update(Buffer.from(whatsappStatusRaw))
+  .digest("hex");
+
+const whatsappStatus = await invoke(
+  agent,
+  "POST",
+  whatsappStatusPayload,
+  { provider: "whatsapp" },
+  { "x-hub-signature-256": whatsappStatusSignature }
+);
+assert.equal(whatsappStatus.status, 200);
+const whatsappEvents = await listAuditEvents(null, 100);
+assert.ok(
+  whatsappEvents.some((event) =>
+    event.event_type === "whatsapp_delivery_status" &&
+    event.data?.whatsapp_message_id === "wamid.ci" &&
+    event.data?.status === "delivered"
+  )
+);
 
 // WhatsApp exact-payment review must be bound to the originating phone,
 // workspace and approver role, then return a receipt to the same chat.
