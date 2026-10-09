@@ -268,7 +268,7 @@ export async function savePayment(payment) {
     insert into jack_payments (
       id, invoice_name, invoice_number, invoice_hash, supplier,
       source_currency, destination_currency, source_amount, destination_amount,
-      route, route_options, beneficiary, risk, status, settlement_signature, approval, invoice_meta
+      route, route_options, beneficiary, risk, status, settlement_signature, approval, invoice_meta, workspace_id
     ) values (
       ${payment.id}, ${payment.invoice_name}, ${payment.invoice_number || null},
       ${payment.invoice_hash || null}, ${payment.supplier || null},
