@@ -45,6 +45,36 @@ async function whatsappDiagnostic() {
 
   const wabaId = String(process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || "").trim();
   const appId = String(process.env.WHATSAPP_APP_ID || "").trim();
+  let tokenProbe = { ok: false, reason: "missing_token" };
+  if (token) {
+    try {
+      const response = await fetch(
+        `https://graph.facebook.com/${version}/debug_token?input_token=${encodeURIComponent(token)}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const data = await response.json().catch(() => ({}));
+      const info = data?.data || {};
+      tokenProbe = response.ok && !data?.error
+        ? {
+            ok: true,
+            isValid: Boolean(info.is_valid),
+            appId: info.app_id ? String(info.app_id) : null,
+            expiresAt: Number(info.expires_at || 0) || null,
+            dataAccessExpiresAt: Number(info.data_access_expires_at || 0) || null,
+            scopes: Array.isArray(info.scopes)
+              ? info.scopes.filter((scope) => String(scope).startsWith("whatsapp_"))
+              : []
+          }
+        : {
+            ok: false,
+            httpStatus: response.status,
+            error: data?.error?.message || "Could not debug access token"
+          };
+    } catch (error) {
+      tokenProbe = { ok: false, reason: "probe_failed", message: error?.message || "Unknown error" };
+    }
+  }
+
   let permissionProbe = { ok: false, reason: "missing_token" };
   if (token) {
     try {
@@ -115,6 +145,31 @@ async function whatsappDiagnostic() {
     }
   }
 
+  let wabaPhoneProbe = { ok: false, reason: "missing_credentials" };
+  if (token && wabaId) {
+    try {
+      const response = await fetch(
+        `https://graph.facebook.com/${version}/${encodeURIComponent(wabaId)}/phone_numbers`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const data = await response.json().catch(() => ({}));
+      const rows = Array.isArray(data?.data) ? data.data : [];
+      wabaPhoneProbe = response.ok && !data?.error
+        ? {
+            ok: true,
+            count: rows.length,
+            configuredPhoneBelongsToWaba: rows.some((row) => String(row?.id || "") === phoneId)
+          }
+        : {
+            ok: false,
+            httpStatus: response.status,
+            error: data?.error?.message || "Could not list WABA phone numbers"
+          };
+    } catch (error) {
+      wabaPhoneProbe = { ok: false, reason: "probe_failed", message: error?.message || "Unknown error" };
+    }
+  }
+
   let events = [];
   try {
     events = await listAuditEvents(null, 300);
@@ -132,8 +187,10 @@ async function whatsappDiagnostic() {
 
   return {
     phoneProbe,
+    tokenProbe,
     permissionProbe,
     wabaSubscription,
+    wabaPhoneProbe,
     audit: {
       whatsappEvents: whatsappEvents.length,
       inboundMessages: inbound.length,
