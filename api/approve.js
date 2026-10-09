@@ -9,11 +9,19 @@ import {
   transitionPayment
 } from "./_lib/db.js";
 import { verifyWhatsAppLaunch } from "./_lib/whatsapp-auth.js";
+import { verifyWeChatLaunch } from "./_lib/wechat-auth.js";
 import {
   PAYMENT_STATUS,
   assertApprovalAllowed,
   requiredAcknowledgements
 } from "./_lib/state.js";
+
+function approvalChannelName({ telegramAuth, whatsappAuth, wechatAuth }) {
+  if (telegramAuth) return "telegram-mini-app";
+  if (whatsappAuth) return "whatsapp-web";
+  if (wechatAuth) return "wechat-web";
+  return "web";
+}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
@@ -31,6 +39,7 @@ export default async function handler(req, res) {
     let approvalActor = "human-approver";
     let telegramAuth = null;
     let whatsappAuth = null;
+    let wechatAuth = null;
     let workspaceContext = null;
     const approvalChannel = String(body.channel || "").toLowerCase();
 
@@ -67,7 +76,27 @@ export default async function handler(req, res) {
         return res.status(403).json({ error: "Payment is not available to this WhatsApp workspace" });
       }
       approvalActor = `whatsapp-user:${whatsappAuth.whatsappUserId}`;
+    } else if (approvalChannel === "wechat") {
+      wechatAuth = verifyWeChatLaunch(body.wechatLaunchToken, payment.id);
+      workspaceContext = await getTelegramWorkspaceMembership(
+        `wechat:${wechatAuth.wechatOpenId}`
+      );
+      if (!workspaceContext) {
+        return res.status(403).json({ error: "WeChat workspace membership is missing" });
+      }
+      if (!roleCan(workspaceContext.member.role, "approve")) {
+        return res.status(403).json({ error: "Your workspace role cannot approve payments" });
+      }
+      if (
+        !payment.workspace_id ||
+        String(payment.workspace_id) !== String(workspaceContext.workspace.id) ||
+        String(wechatAuth.workspaceId) !== String(workspaceContext.workspace.id)
+      ) {
+        return res.status(403).json({ error: "Payment is not available to this WeChat workspace" });
+      }
+      approvalActor = `wechat-user:${wechatAuth.wechatOpenId}`;
     }
+
     assertApprovalAllowed(payment, acknowledgements);
 
     const amountUsdg = Number(body.amountUsdg || body.amountUsdc || 1);
@@ -75,6 +104,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "amountUsdg must be a positive number" });
     }
 
+    const channel = approvalChannelName({ telegramAuth, whatsappAuth, wechatAuth });
     const signed = signApproval({
       paymentId: payment.id,
       invoiceName: payment.invoice_name,
@@ -85,16 +115,22 @@ export default async function handler(req, res) {
       destinationAmount: payment.destination_amount,
       route: payment.route,
       amountUsdg,
-      channel: telegramAuth
-        ? "telegram-mini-app"
-        : whatsappAuth
-          ? "whatsapp-web"
-          : "web",
+      channel,
       telegramUserId: telegramAuth ? String(telegramAuth.user.id) : null,
       whatsappUserId: whatsappAuth ? String(whatsappAuth.whatsappUserId) : null,
+      wechatOpenId: wechatAuth ? String(wechatAuth.wechatOpenId) : null,
       workspaceId: workspaceContext?.workspace?.id || payment.workspace_id || null,
       approverRole: workspaceContext?.member?.role || null
     });
+
+    const commonAudit = {
+      channel,
+      telegram_user_id: telegramAuth ? String(telegramAuth.user.id) : null,
+      whatsapp_user_id: whatsappAuth ? String(whatsappAuth.whatsappUserId) : null,
+      wechat_open_id: wechatAuth ? String(wechatAuth.wechatOpenId) : null,
+      workspace_id: workspaceContext?.workspace?.id || payment.workspace_id || null,
+      approver_role: workspaceContext?.member?.role || null
+    };
 
     await transitionPayment(
       payment.id,
@@ -113,15 +149,7 @@ export default async function handler(req, res) {
         provided_acknowledgements: acknowledgements,
         approval_expires_at: signed.payload.expiresAt,
         amount_usdg: amountUsdg,
-        channel: telegramAuth
-          ? "telegram-mini-app"
-          : whatsappAuth
-            ? "whatsapp-web"
-            : "web",
-        telegram_user_id: telegramAuth ? String(telegramAuth.user.id) : null,
-        whatsapp_user_id: whatsappAuth ? String(whatsappAuth.whatsappUserId) : null,
-        workspace_id: workspaceContext?.workspace?.id || payment.workspace_id || null,
-        approver_role: workspaceContext?.member?.role || null
+        ...commonAudit
       }
     );
 
@@ -131,15 +159,7 @@ export default async function handler(req, res) {
       source_currency: payment.source_currency,
       destination_currency: payment.destination_currency,
       expires_at: signed.payload.expiresAt,
-      channel: telegramAuth
-        ? "telegram-mini-app"
-        : whatsappAuth
-          ? "whatsapp-web"
-          : "web",
-      telegram_user_id: telegramAuth ? String(telegramAuth.user.id) : null,
-      whatsapp_user_id: whatsappAuth ? String(whatsappAuth.whatsappUserId) : null,
-      workspace_id: workspaceContext?.workspace?.id || payment.workspace_id || null,
-      approver_role: workspaceContext?.member?.role || null
+      ...commonAudit
     });
 
     return res.status(200).json({
