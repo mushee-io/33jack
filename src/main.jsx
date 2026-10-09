@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   ArrowRight,
@@ -1538,6 +1538,11 @@ function VoicePayWorkspace() {
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState(null);
   const [listening, setListening] = useState(false);
+  const [processingVoice, setProcessingVoice] = useState(false);
+  const recorderRef = useRef(null);
+  const streamRef = useRef(null);
+  const chunksRef = useRef([]);
+  const stopTimerRef = useRef(null);
   const [input, setInput] = useState("");
   const [error, setError] = useState("");
   const [messages, setMessages] = useState([
@@ -1681,33 +1686,138 @@ function VoicePayWorkspace() {
     speak(reply);
   }
 
-  function listen() {
-    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!Recognition) {
-      setError("Voice recognition is not supported in this browser. Use the command box below.");
+  function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const value = String(reader.result || "");
+        resolve(value.includes(",") ? value.split(",")[1] : value);
+      };
+      reader.onerror = () => reject(new Error("Could not read microphone recording"));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function transcribeVoice(blob) {
+    setProcessingVoice(true);
+    setError("");
+    try {
+      if (!blob || blob.size < 200) {
+        throw new Error("The recording was empty. Try again and speak after the mic turns green.");
+      }
+
+      const audioData = await blobToBase64(blob);
+      const response = await fetch("/api/voice-transcribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          audioData,
+          mimeType: blob.type || "audio/webm"
+        })
+      });
+      const data = await readApiResponse(response);
+      if (!response.ok) {
+        throw new Error(data.detail || data.error || "Voice transcription failed");
+      }
+
+      const transcript = String(data.transcript || "").trim();
+      if (!transcript) {
+        throw new Error("I could not hear a command in that recording. Try again.");
+      }
+      handleIntent(transcript);
+    } catch (voiceError) {
+      setError(voiceError instanceof Error ? voiceError.message : "Voice transcription failed. Try again.");
+    } finally {
+      setProcessingVoice(false);
+    }
+  }
+
+  async function listen() {
+    if (processingVoice) return;
+
+    const activeRecorder = recorderRef.current;
+    if (listening && activeRecorder && activeRecorder.state === "recording") {
+      activeRecorder.stop();
       return;
     }
 
-    const recognition = new Recognition();
-    recognition.lang = "en-US";
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setError("This browser cannot record microphone audio. Use Chrome, Edge, Safari, or type the command below.");
+      return;
+    }
 
-    recognition.onstart = () => {
-      setListening(true);
+    try {
       setError("");
-    };
-    recognition.onerror = () => {
-      setListening(false);
-      setError("I could not hear that clearly. Try again or type the command.");
-    };
-    recognition.onend = () => setListening(false);
-    recognition.onresult = (event) => {
-      const transcript = event.results?.[0]?.[0]?.transcript || "";
-      handleIntent(transcript);
-    };
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      });
+      streamRef.current = stream;
 
-    recognition.start();
+      const candidates = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4"
+      ];
+      const mimeType = candidates.find((type) => MediaRecorder.isTypeSupported?.(type)) || "";
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+
+      recorderRef.current = recorder;
+      chunksRef.current = [];
+
+      recorder.ondataavailable = (event) => {
+        if (event.data?.size) chunksRef.current.push(event.data);
+      };
+
+      recorder.onerror = () => {
+        setError("The microphone recording failed. Check browser microphone permission and try again.");
+      };
+
+      recorder.onstop = async () => {
+        if (stopTimerRef.current) {
+          clearTimeout(stopTimerRef.current);
+          stopTimerRef.current = null;
+        }
+        stream.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+        recorderRef.current = null;
+        setListening(false);
+
+        const blob = new Blob(chunksRef.current, {
+          type: recorder.mimeType || mimeType || "audio/webm"
+        });
+        chunksRef.current = [];
+        await transcribeVoice(blob);
+      };
+
+      recorder.start();
+      setListening(true);
+
+      stopTimerRef.current = window.setTimeout(() => {
+        if (recorder.state === "recording") recorder.stop();
+      }, 8000);
+    } catch (voiceError) {
+      streamRef.current?.getTracks?.().forEach((track) => track.stop());
+      streamRef.current = null;
+      recorderRef.current = null;
+      setListening(false);
+
+      const name = voiceError?.name || "";
+      if (name === "NotAllowedError" || name === "SecurityError") {
+        setError("Microphone access is blocked. Allow microphone access for 33jack.vercel.app, then tap the mic again.");
+      } else if (name === "NotFoundError") {
+        setError("No microphone was detected on this device.");
+      } else if (name === "NotReadableError") {
+        setError("The microphone is busy or unavailable. Close any app using it and try again.");
+      } else {
+        setError(voiceError instanceof Error ? voiceError.message : "Could not start the microphone.");
+      }
+    }
   }
 
   function submitTyped(e) {
@@ -1758,13 +1868,14 @@ function VoicePayWorkspace() {
               type="button"
               className={listening ? "voice-orb listening" : "voice-orb"}
               onClick={listen}
-              aria-label="Start voice command"
+              disabled={processingVoice}
+              aria-label={listening ? "Stop voice command recording" : "Start voice command"}
             >
               <Mic size={28}/>
             </button>
             <div>
-              <span className="eyebrow">{listening ? "LISTENING…" : "VOICE COMMAND"}</span>
-              <h3>{listening ? "Go ahead." : "Tap the mic and speak."}</h3>
+              <span className="eyebrow">{processingVoice ? "TRANSCRIBING…" : listening ? "LISTENING…" : "VOICE COMMAND"}</span>
+              <h3>{processingVoice ? "Understanding command…" : listening ? "Speak now. Tap again when done." : "Tap the mic and speak."}</h3>
               <p>Example: “Pay Jonathan Berger” → “Two thousand dollars” → “Confirm invoice”.</p>
             </div>
           </div>
