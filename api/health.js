@@ -100,12 +100,19 @@ async function whatsappDiagnostic() {
       inboundMessages: inbound.length,
       failures: failures.length,
       latestInboundAt: inbound[0]?.created_at || inbound[0]?.timestamp || null,
-      latestEventTypes: whatsappEvents.slice(0, 12).map((event) => ({
-        type: event.event_type,
-        at: event.created_at || event.timestamp || null,
-        messageType: event.data?.message_type || null,
-        error: String(event.data?.error || "").slice(0, 500) || null
-      }))
+      latestEventTypes: whatsappEvents.slice(0, 12).map((event) => {
+        let data = event.data || {};
+        if (typeof data === "string") {
+          try { data = JSON.parse(data); } catch { data = {}; }
+        }
+        return {
+          type: event.event_type,
+          at: event.created_at || event.timestamp || null,
+          messageType: data?.message_type || null,
+          error: String(data?.error || "").slice(0, 500) || null,
+          dataKeys: data && typeof data === "object" ? Object.keys(data).slice(0, 12) : []
+        };
+      })
     }
   };
 }
