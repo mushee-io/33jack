@@ -11,6 +11,7 @@ import {
 import { PAYMENT_STATUS } from "./_lib/state.js";
 import { sendTelegramPaymentReceipt } from "./_lib/telegram.js";
 import { sendWhatsAppPaymentReceipt } from "./_lib/whatsapp.js";
+import { sendWeChatPaymentReceipt } from "./_lib/wechat.js";
 
 const DEVNET = process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com";
 
@@ -72,21 +73,57 @@ async function maybeSendWhatsAppReceipt(paymentId, approved) {
   }
 }
 
-async function assertChannelAuthorization(payment, approved) {
-  if (String(approved?.channel || "") !== "whatsapp-web") return null;
-  const userId = String(approved.whatsappUserId || "").trim();
-  if (!userId) throw new Error("WhatsApp approval identity is missing");
+async function maybeSendWeChatReceipt(paymentId, approved) {
+  if (
+    String(approved?.channel || "") !== "wechat-web" ||
+    !approved?.wechatOpenId
+  ) return { attempted: false, sent: false };
 
-  const membership = await getTelegramWorkspaceMembership(`whatsapp:${userId}`);
+  try {
+    const fresh = await getPayment(paymentId);
+    if (!fresh) return { attempted: true, sent: false };
+    const result = await sendWeChatPaymentReceipt({
+      payment: fresh,
+      wechatOpenId: approved.wechatOpenId,
+      base: String(process.env.PUBLIC_APP_URL || process.env.APP_BASE_URL || "").replace(/\/$/, "")
+    });
+    return {
+      attempted: true,
+      sent: Boolean(result?.ok),
+      idempotent: Boolean(result?.idempotent),
+      suppressed: Boolean(result?.suppressed)
+    };
+  } catch (error) {
+    await addAuditEvent(paymentId, "wechat_receipt_failed", "settlement-engine", {
+      wechat_open_id: String(approved.wechatOpenId || ""),
+      error: error?.message || "Unknown WeChat receipt error"
+    }).catch(() => {});
+    return { attempted: true, sent: false, error: error?.message || "Unknown error" };
+  }
+}
+
+async function assertChannelAuthorization(payment, approved) {
+  const channel = String(approved?.channel || "");
+  if (!["whatsapp-web", "wechat-web"].includes(channel)) return null;
+
+  const isWhatsApp = channel === "whatsapp-web";
+  const userId = String(
+    isWhatsApp ? approved.whatsappUserId : approved.wechatOpenId
+  ).trim();
+  const label = isWhatsApp ? "WhatsApp" : "WeChat";
+  const identity = isWhatsApp ? `whatsapp:${userId}` : `wechat:${userId}`;
+  if (!userId) throw new Error(`${label} approval identity is missing`);
+
+  const membership = await getTelegramWorkspaceMembership(identity);
   if (!membership || !roleCan(membership.member.role, "approve")) {
-    throw new Error("WhatsApp approver no longer has payment approval permission");
+    throw new Error(`${label} approver no longer has payment approval permission`);
   }
   if (
     !approved.workspaceId ||
     String(membership.workspace.id) !== String(approved.workspaceId) ||
     String(payment.workspace_id || "") !== String(approved.workspaceId)
   ) {
-    throw new Error("WhatsApp payment workspace authorization changed");
+    throw new Error(`${label} payment workspace authorization changed`);
   }
 
   const control = await getBeneficiaryControl(
@@ -210,6 +247,7 @@ export default async function handler(req, res) {
         const isDevnet = payment.status === PAYMENT_STATUS.SETTLED_DEVNET;
         const telegramReceipt = await maybeSendTelegramReceipt(payment.id, approved);
         const whatsappReceipt = await maybeSendWhatsAppReceipt(payment.id, approved);
+        const wechatReceipt = await maybeSendWeChatReceipt(payment.id, approved);
         return res.status(200).json({
           mode: isDevnet ? "devnet" : "demo",
           signature: payment.settlement_signature,
@@ -219,7 +257,8 @@ export default async function handler(req, res) {
           idempotent: true,
           status: payment.status,
           telegramReceipt,
-          whatsappReceipt
+          whatsappReceipt,
+          wechatReceipt
         });
       }
 
@@ -262,6 +301,7 @@ export default async function handler(req, res) {
 
       const telegramReceipt = await maybeSendTelegramReceipt(payment.id, approved);
       const whatsappReceipt = await maybeSendWhatsAppReceipt(payment.id, approved);
+      const wechatReceipt = await maybeSendWeChatReceipt(payment.id, approved);
 
       return res.status(200).json({
         mode: "demo",
@@ -270,6 +310,7 @@ export default async function handler(req, res) {
         idempotent: false,
         telegramReceipt,
         whatsappReceipt,
+        wechatReceipt,
         message:
           "Approval was verified and state was reconciled, but Devnet signer/recipient are not configured, so no tokens were moved."
       });
@@ -311,10 +352,14 @@ export default async function handler(req, res) {
       const whatsappReceipt = existingResponse.pending
         ? { attempted: false, sent: false }
         : await maybeSendWhatsAppReceipt(payment.id, approved);
+      const wechatReceipt = existingResponse.pending
+        ? { attempted: false, sent: false }
+        : await maybeSendWeChatReceipt(payment.id, approved);
       return res.status(existingResponse.pending ? 202 : 200).json({
         ...existingResponse,
         telegramReceipt,
-        whatsappReceipt
+        whatsappReceipt,
+        wechatReceipt
       });
     }
 
@@ -454,6 +499,7 @@ export default async function handler(req, res) {
 
     const telegramReceipt = await maybeSendTelegramReceipt(payment.id, approved);
     const whatsappReceipt = await maybeSendWhatsAppReceipt(payment.id, approved);
+    const wechatReceipt = await maybeSendWeChatReceipt(payment.id, approved);
 
     return res.status(200).json({
       mode: "devnet",
@@ -461,7 +507,8 @@ export default async function handler(req, res) {
       explorer,
       idempotent: false,
       telegramReceipt,
-      whatsappReceipt
+      whatsappReceipt,
+      wechatReceipt
     });
   } catch (error) {
     console.error("settlement failed", error);
