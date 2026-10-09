@@ -37,9 +37,11 @@ This repository is the Colosseum MVP.
 - Agent-generated controlled payment proposals that hand off to the human-approved execution flow
 - Voice Pay Beta for conversational payment preparation with on-screen approval
 - Jack Swipe Beta for one-gesture approval of clean analysed invoices, with automatic stop-and-review for risk flags
-- WhatsApp / Telegram / Web product surfaces
+- WhatsApp / Telegram / WeChat / Web product surfaces
 - Workspace-scoped WhatsApp AI chat for finance questions and payment-review requests
 - WhatsApp voice-note transcription through Groq Whisper before the same controlled agent flow
+- WeChat Official Account secure callback with Token verification and EncodingAESKey/AES decryption
+- WeChat workspace-scoped AI chat, invoice-image analysis, voice transcription, signed Review & Pay links and settlement receipts
 - Responsive desktop + mobile UI
 - CI build verification
 
@@ -62,7 +64,7 @@ Businesses paying suppliers across borders do much more than click "send":
 ## Architecture
 
 ```
-Web / WhatsApp / Telegram
+Web / WhatsApp / Telegram / WeChat
             ↓
       33jack Agent
             ↓
@@ -308,6 +310,54 @@ Invoice documents and images continue through the controlled flow:
 
 
 
+## WeChat Official Account channel
+
+33Jack supports a WeChat/Weixin Official Account or Service Account as a controlled finance-operator channel.
+
+Callback URL:
+
+`GET/POST /api/agent?provider=wechat`
+
+The adapter supports:
+
+- WeChat server URL verification using the configured `WECHAT_TOKEN`
+- plaintext callbacks for initial debugging
+- secure AES callback decryption using `WECHAT_ENCODING_AES_KEY`
+- AppID validation after encrypted payload decryption
+- OpenID-namespaced workspaces so one WeChat user cannot read another workspace
+- normal workspace-scoped finance questions through the same Groq agent
+- inbound invoice images through WeChat temporary-media retrieval
+- inbound WeChat voice messages transcribed with Groq Whisper
+- `STATUS`, `TEAM`, `INVITE <role>` and `JOIN <code>`
+- natural payment-review requests such as `Pay invoice NX-2026-0929-014`
+- short-lived signed Review & Pay links bound to the exact OpenID, workspace and payment
+- server-side role rechecks before approval and settlement
+- settlement receipts returned through the WeChat customer-service message API
+- message-ID deduplication to tolerate WeChat callback retries
+
+Required environment:
+
+```bash
+WECHAT_APP_ID=
+WECHAT_APP_SECRET=
+WECHAT_TOKEN=
+WECHAT_ENCODING_AES_KEY=
+WECHAT_REVIEW_SECRET=
+PUBLIC_APP_URL=https://33jack.vercel.app
+```
+
+Configure the Official Account server URL as:
+
+`https://33jack.vercel.app/api/agent?provider=wechat`
+
+For production, use WeChat **Security Mode** once URL verification succeeds. The callback is XML-based and 33Jack decrypts the encrypted `Encrypt` envelope server-side.
+
+Outbound customer-service messages use the Official Account access token obtained server-side from `WECHAT_APP_ID` + `WECHAT_APP_SECRET`. Some WeChat account configurations require the server egress IP to be allowlisted; if WeChat returns an IP-whitelist error, use a stable outbound IP/proxy or a hosting setup with fixed egress.
+
+The controlled flow remains:
+
+**WeChat message / invoice image / voice → 33Jack AI + deterministic risk → signed Review & Pay → exact approval → settlement → receipt back in WeChat**.
+
 ## Wise Sandbox webhook
 
 33Jack accepts Wise transfer events at:
@@ -334,7 +384,7 @@ The codebase now covers the controlled software workflow through external-provid
 
 - live stablecoin off-ramp adapter
 - organization authentication + multi-user maker/checker roles
-- secure WhatsApp / Telegram ingestion
+- secure WhatsApp / Telegram / WeChat ingestion
 - accounting-system export / sync
 
 ---
