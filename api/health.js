@@ -9,7 +9,7 @@ import { listAuditEvents } from "./_lib/db.js";
 async function whatsappDiagnostic() {
   const token = String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
   const phoneId = String(process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
-  const version = String(process.env.WHATSAPP_GRAPH_VERSION || "v26.0").trim();
+  const version = String(process.env.WHATSAPP_GRAPH_VERSION || "v25.0").trim();
 
   let phoneProbe = { ok: false, reason: "missing_credentials" };
   if (token && phoneId) {
@@ -43,7 +43,38 @@ async function whatsappDiagnostic() {
     }
   }
 
-  const wabaId = String(process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || "1062705723268139").trim();
+  const wabaId = String(process.env.WHATSAPP_BUSINESS_ACCOUNT_ID || "").trim();
+  const appId = String(process.env.WHATSAPP_APP_ID || "").trim();
+  let permissionProbe = { ok: false, reason: "missing_token" };
+  if (token) {
+    try {
+      const response = await fetch(
+        `https://graph.facebook.com/${version}/me/permissions`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const data = await response.json().catch(() => ({}));
+      const rows = Array.isArray(data?.data) ? data.data : [];
+      const granted = new Set(
+        rows
+          .filter((row) => String(row?.status || "").toLowerCase() === "granted")
+          .map((row) => String(row?.permission || ""))
+      );
+      permissionProbe = response.ok && !data?.error
+        ? {
+            ok: true,
+            messaging: granted.has("whatsapp_business_messaging"),
+            management: granted.has("whatsapp_business_management")
+          }
+        : {
+            ok: false,
+            httpStatus: response.status,
+            error: data?.error?.message || "Could not read token permissions"
+          };
+    } catch (error) {
+      permissionProbe = { ok: false, reason: "probe_failed", message: error?.message || "Unknown error" };
+    }
+  }
+
   let wabaSubscription = { ok: false, reason: "missing_credentials" };
   if (token && wabaId) {
     try {
@@ -60,7 +91,14 @@ async function whatsappDiagnostic() {
             hasSubscriptions: Array.isArray(data?.data) && data.data.length > 0,
             appIds: Array.isArray(data?.data)
               ? data.data.map((item) => String(item?.whatsapp_business_api_data?.id || item?.id || "")).filter(Boolean)
-              : []
+              : [],
+            currentAppSubscribed: appId
+              ? (Array.isArray(data?.data)
+                  ? data.data
+                      .map((item) => String(item?.whatsapp_business_api_data?.id || item?.id || ""))
+                      .includes(appId)
+                  : false)
+              : null
           }
         : {
             ok: false,
@@ -94,6 +132,7 @@ async function whatsappDiagnostic() {
 
   return {
     phoneProbe,
+    permissionProbe,
     wabaSubscription,
     audit: {
       whatsappEvents: whatsappEvents.length,
