@@ -121,6 +121,52 @@ export default async function handler(req, res) {
   if (
     req.method === "GET" &&
     String(req.query?.diagnostic || "").toLowerCase() === "whatsapp" &&
+    String(req.query?.recipientProbe || "") === "new-number"
+  ) {
+    const token = String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
+    const phoneId = String(process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
+    const version = String(process.env.WHATSAPP_GRAPH_VERSION || "v26.0").trim();
+    try {
+      const response = await fetch(
+        `https://graph.facebook.com/${version}/${encodeURIComponent(phoneId)}/messages`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            messaging_product: "whatsapp",
+            to: "447835338831",
+            type: "template",
+            template: {
+              name: "hello_world",
+              language: { code: "en_US" }
+            }
+          })
+        }
+      );
+      const data = await response.json().catch(() => ({}));
+      return res.status(response.ok ? 200 : response.status).json({
+        ok: response.ok,
+        status: response.status,
+        accepted: Boolean(data?.messages?.[0]?.id),
+        messageStatus: data?.messages?.[0]?.message_status || null,
+        error: response.ok ? null : {
+          code: data?.error?.code ?? null,
+          subcode: data?.error?.error_subcode ?? null,
+          type: data?.error?.type || null,
+          message: data?.error?.message || null,
+          details: data?.error?.error_data?.details || null
+        }
+      });
+    } catch (error) {
+      return res.status(500).json({ ok: false, error: error?.message || "Recipient probe failed" });
+    }
+  }
+  if (
+    req.method === "GET" &&
+    String(req.query?.diagnostic || "").toLowerCase() === "whatsapp" &&
     String(req.query?.send || "") === "latest"
   ) {
     const token = String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
