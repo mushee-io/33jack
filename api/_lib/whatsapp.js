@@ -30,7 +30,7 @@ const WHATSAPP_TRANSCRIPTION_MODEL = () =>
   String(process.env.GROQ_WHISPER_MODEL || "whisper-large-v3-turbo").trim();
 
 function graphVersion() {
-  return String(process.env.WHATSAPP_GRAPH_VERSION || "v25.0").trim();
+  return String(process.env.WHATSAPP_GRAPH_VERSION || "v26.0").trim();
 }
 
 function accessToken() {
@@ -146,20 +146,31 @@ async function graphRequest(path, options = {}) {
 }
 
 async function sendText(to, text, extra = {}) {
-  return graphRequest(`${phoneNumberId()}/messages`, {
-    method: "POST",
-    body: {
-      messaging_product: "whatsapp",
-      recipient_type: "individual",
-      to: String(to),
-      type: "text",
-      text: {
-        preview_url: false,
-        body: String(text).slice(0, 4096)
-      },
-      ...extra
-    }
-  });
+  try {
+    const result = await graphRequest(`${phoneNumberId()}/messages`, {
+      method: "POST",
+      body: {
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to: String(to),
+        type: "text",
+        text: {
+          preview_url: false,
+          body: String(text).slice(0, 4096)
+        },
+        ...extra
+      }
+    });
+    await addAuditEvent(null, "whatsapp_reply_sent", "whatsapp-outbound", {
+      message_id: result?.messages?.[0]?.id || null
+    }).catch(() => {});
+    return result;
+  } catch (error) {
+    await addAuditEvent(null, "whatsapp_reply_failed", "whatsapp-outbound", {
+      error: String(error?.message || "Unknown WhatsApp send error").slice(0, 1000)
+    }).catch(() => {});
+    throw error;
+  }
 }
 
 async function sendReviewLink(to, text, url) {
