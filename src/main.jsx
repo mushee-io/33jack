@@ -620,14 +620,16 @@ function ChannelsWorkspace() {
             <div><span className="eyebrow">WHATSAPP CLOUD API</span><h3>Invoice-to-review business channel</h3></div>
             <span className={"sandbox-badge " + (whatsappReady ? "live" : "")}>{whatsappReady ? "CONFIGURED" : "CODE READY"}</span>
           </div>
-          <p>Users can send an invoice directly in WhatsApp. 33Jack retrieves the media from Meta, runs the existing invoice extraction and deterministic risk checks, prepares the payment review, and sends a secure handoff back to the web approval flow.</p>
+          <p>Users can send invoices, ask normal finance questions, use voice notes, and request a payment review directly in WhatsApp. 33Jack keeps the conversation workspace-scoped and hands any money movement into the same signed approval flow.</p>
           <div className="rail-badges">
-            <span>PDF + JPG + PNG</span><span>STATUS</span><span>Risk review</span><span>Secure handoff</span><span>Meta webhook verification</span>
+            <span>PDF + JPG + PNG</span><span>AI chat</span><span>Voice notes</span><span>Risk review</span><span>Secure handoff</span><span>Meta webhook verification</span>
           </div>
           <div className="proposal-lines">
             <p><span>Cloud API credentials</span><b>{whatsapp.configured ? "Configured" : "Needed"}</b></p>
             <p><span>Webhook verify token</span><b>{whatsapp.verifyTokenConfigured ? "Configured" : "Needed"}</b></p>
             <p><span>App secret signature check</span><b>{whatsapp.appSecretConfigured ? "Configured" : "Needed"}</b></p>
+            <p><span>Workspace AI agent</span><b>{whatsapp.agentConfigured ? "Ready" : "Needs Groq"}</b></p>
+            <p><span>Voice-note transcription</span><b>{whatsapp.voiceTranscriptionConfigured ? "Ready" : "Needs Groq"}</b></p>
             <p><span>Graph API</span><b>{whatsapp.graphVersion || "v26.0"}</b></p>
             <p><span>Webhook endpoint</span><b>/api/agent?provider=whatsapp</b></p>
           </div>
