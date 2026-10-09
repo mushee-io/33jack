@@ -30,7 +30,7 @@ const WHATSAPP_TRANSCRIPTION_MODEL = () =>
   String(process.env.GROQ_WHISPER_MODEL || "whisper-large-v3-turbo").trim();
 
 function graphVersion() {
-  return String(process.env.WHATSAPP_GRAPH_VERSION || "v26.0").trim();
+  return String(process.env.WHATSAPP_GRAPH_VERSION || "v25.0").trim();
 }
 
 function accessToken() {
