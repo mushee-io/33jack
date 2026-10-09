@@ -2,12 +2,14 @@ import { getPayoutProviderReadiness } from "./_lib/payout-provider.js";
 import { getPolicyConfig } from "./_lib/policy.js";
 import { telegramReadiness } from "./_lib/telegram.js";
 import { whatsappReadiness } from "./_lib/whatsapp.js";
+import { wechatReadiness } from "./_lib/wechat.js";
 
 export default async function handler(req, res) {
   const payoutProvider = getPayoutProviderReadiness();
   const payoutPolicy = getPolicyConfig();
   const telegram = telegramReadiness();
   const whatsapp = whatsappReadiness();
+  const wechat = wechatReadiness();
   const checks = {
     ai: Boolean(process.env.GROQ_API_KEY),
     database: Boolean(process.env.DATABASE_URL),
@@ -40,7 +42,8 @@ export default async function handler(req, res) {
     payoutProvider: payoutProvider.provider,
     channels: {
       whatsapp,
-      telegram
+      telegram,
+      wechat
     },
     payoutPolicy: {
       configured: payoutPolicy.configured,
