@@ -1707,7 +1707,7 @@ function VoicePayWorkspace() {
       }
 
       const audioData = await blobToBase64(blob);
-      const response = await fetch("/api/voice-transcribe", {
+      const response = await fetch("/api/agent?provider=voice-transcribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
