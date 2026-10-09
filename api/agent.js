@@ -22,6 +22,115 @@ function parseJsonBody(raw) {
   return JSON.parse(raw.toString("utf8"));
 }
 
+const MAX_VOICE_AUDIO_BYTES = 3 * 1024 * 1024;
+
+function voiceMimeType(value) {
+  const mime = String(value || "").split(";")[0].trim().toLowerCase();
+  const allowed = new Set([
+    "audio/webm",
+    "audio/ogg",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/mpeg",
+    "audio/mp3",
+    "audio/mp4",
+    "audio/m4a",
+    "video/webm",
+    "video/mp4"
+  ]);
+  return allowed.has(mime) ? mime : "audio/webm";
+}
+
+function voiceExtension(mime) {
+  if (mime.includes("ogg")) return "ogg";
+  if (mime.includes("wav")) return "wav";
+  if (mime.includes("mpeg") || mime.includes("mp3")) return "mp3";
+  if (mime.includes("mp4") || mime.includes("m4a")) return "m4a";
+  return "webm";
+}
+
+async function handleVoiceTranscription(body, res) {
+  const apiKey = String(process.env.GROQ_API_KEY || "").trim();
+  if (!apiKey) {
+    return res.status(503).json({
+      error: "Voice transcription is not configured",
+      detail: "GROQ_API_KEY is missing"
+    });
+  }
+
+  const audioData = String(body?.audioData || "").trim();
+  const mimeType = voiceMimeType(body?.mimeType);
+  if (!audioData) {
+    return res.status(400).json({ error: "No voice recording received" });
+  }
+
+  const bytes = Buffer.from(audioData, "base64");
+  if (!bytes.length) {
+    return res.status(400).json({ error: "Voice recording was empty" });
+  }
+  if (bytes.length > MAX_VOICE_AUDIO_BYTES) {
+    return res.status(413).json({
+      error: "Voice recording is too large",
+      detail: "Keep each 33Jack voice command under a few seconds."
+    });
+  }
+
+  const form = new FormData();
+  form.append(
+    "file",
+    new Blob([bytes], { type: mimeType }),
+    `33jack-command.${voiceExtension(mimeType)}`
+  );
+  form.append(
+    "model",
+    String(process.env.GROQ_WHISPER_MODEL || "whisper-large-v3-turbo").trim()
+  );
+  form.append("response_format", "json");
+  form.append("language", "en");
+  form.append(
+    "prompt",
+    "33Jack business finance voice command. Preserve person and company names, invoice references, currencies and amounts exactly."
+  );
+
+  try {
+    const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      return res.status(502).json({
+        error: "Voice transcription failed",
+        detail:
+          data?.error?.message ||
+          data?.message ||
+          `Groq returned HTTP ${response.status}`
+      });
+    }
+
+    const transcript = String(data?.text || "").trim();
+    if (!transcript) {
+      return res.status(422).json({
+        error: "I could not hear a command in that recording",
+        detail: "Try again and speak a little closer to the microphone."
+      });
+    }
+
+    return res.status(200).json({
+      ok: true,
+      transcript,
+      model: String(process.env.GROQ_WHISPER_MODEL || "whisper-large-v3-turbo").trim()
+    });
+  } catch (error) {
+    return res.status(500).json({
+      error: "Voice transcription failed",
+      detail: error instanceof Error ? error.message : "Unexpected transcription error"
+    });
+  }
+}
+
 function compactPayment(p) {
   return {
     id: p.id,
@@ -160,6 +269,10 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: "Invalid JSON body" });
   }
   req.body = body;
+
+  if (provider === "voice-transcribe") {
+    return handleVoiceTranscription(body, res);
+  }
 
   if (provider === "telegram") {
     return handleTelegramWebhook(req, res);
