@@ -561,7 +561,7 @@ function ChannelPreview() {
           <h2>Talk to 33jack where work already happens.</h2>
         </div>
         <div className="channel-tabs">
-          {["WhatsApp","Telegram","Web"].map((x) => <button key={x} className={channel === x ? "active" : ""} onClick={() => setChannel(x)}>{x}</button>)}
+          {["WhatsApp","Telegram","WeChat","Web"].map((x) => <button key={x} className={channel === x ? "active" : ""} onClick={() => setChannel(x)}>{x}</button>)}
         </div>
       </div>
       <div className="channel-card">
@@ -599,6 +599,7 @@ function ChannelsWorkspace() {
 
   const whatsapp = health?.channels?.whatsapp || {};
   const telegram = health?.channels?.telegram || {};
+  const wechat = health?.channels?.wechat || {};
   const whatsappReady = Boolean(
     whatsapp.configured &&
     whatsapp.verifyTokenConfigured &&
@@ -608,13 +609,18 @@ function ChannelsWorkspace() {
     telegram.configured &&
     telegram.webhookSecretConfigured
   );
+  const wechatReady = Boolean(
+    wechat.configured &&
+    wechat.secureModeReady &&
+    wechat.outboundMessagingReady
+  );
 
   return (
     <section className="workspace-page unit-workspace">
       <div className="section-head">
         <div>
           <span className="eyebrow">33JACK CHANNEL LAYER</span>
-          <h2>WhatsApp first. Same controlled finance operator.</h2>
+          <h2>Telegram live. WeChat next. Same controlled finance operator.</h2>
         </div>
         <p>Messaging channels prepare and review work. Exact approval and money movement remain inside the controlled 33Jack execution flow.</p>
       </div>
@@ -642,11 +648,30 @@ function ChannelsWorkspace() {
 
         <div className="card channel-integration">
           <div className="pay-form-head">
-            <div><span className="eyebrow">TELEGRAM</span><h3>Second channel</h3></div>
+            <div><span className="eyebrow">WECHAT OFFICIAL ACCOUNT</span><h3>Secure business messaging channel</h3></div>
+            <span className={"sandbox-badge " + (wechatReady ? "live" : "")}>{wechatReady ? "CONFIGURED" : "CODE READY"}</span>
+          </div>
+          <p>WeChat users can ask finance questions, send invoice images and voice commands, then open the same signed Review & Pay flow. Server callbacks support WeChat Token verification and secure EncodingAESKey mode.</p>
+          <div className="rail-badges">
+            <span>AI chat</span><span>Invoice images</span><span>Voice commands</span><span>AES secure mode</span><span>Review & Pay</span><span>Settlement receipts</span>
+          </div>
+          <div className="proposal-lines">
+            <p><span>Callback token</span><b>{wechat.callbackTokenConfigured ? "Configured" : "Needed"}</b></p>
+            <p><span>Official Account AppID</span><b>{wechat.appIdConfigured ? "Configured" : "Needed"}</b></p>
+            <p><span>AppSecret</span><b>{wechat.appSecretConfigured ? "Configured" : "Needed"}</b></p>
+            <p><span>EncodingAESKey</span><b>{wechat.encodingAesKeyConfigured ? "Configured" : "Needed"}</b></p>
+            <p><span>Secure mode</span><b>{wechat.secureModeReady ? "Ready" : "Waiting"}</b></p>
+            <p><span>Webhook endpoint</span><b>/api/agent?provider=wechat</b></p>
+          </div>
+        </div>
+
+        <div className="card channel-integration">
+          <div className="pay-form-head">
+            <div><span className="eyebrow">TELEGRAM</span><h3>Existing live channel</h3></div>
             <span className={"sandbox-badge " + (telegramReady ? "live" : "")}>{telegramReady ? "CONFIGURED" : "CODE READY"}</span>
           </div>
-          <p>The Telegram adapter remains available, but WhatsApp is now the flagship channel for the 33Jack demo.</p>
-          <div className="rail-badges"><span>Telegram · second</span><span>WeChat · third</span></div>
+          <p>Telegram remains the currently configured messaging channel while WeChat is connected.</p>
+          <div className="rail-badges"><span>Invoice upload</span><span>Mini App review</span><span>Receipts</span></div>
         </div>
       </div>
 
