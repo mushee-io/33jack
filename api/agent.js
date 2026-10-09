@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { listBeneficiaries, listPayments } from "./_lib/db.js";
 import { handleTelegramMiniAppAction, handleTelegramWebhook } from "./_lib/telegram.js";
 import { handleWhatsAppReview, handleWhatsAppWebhook } from "./_lib/whatsapp.js";
+import { handleWeChatReview, handleWeChatWebhook } from "./_lib/wechat.js";
 
 export const config = { api: { bodyParser: false } };
 
@@ -123,8 +124,16 @@ export default async function handler(req, res) {
     return handleWhatsAppWebhook(req, res, Buffer.alloc(0));
   }
 
+  if (provider === "wechat" && req.method === "GET") {
+    return handleWeChatWebhook(req, res, Buffer.alloc(0));
+  }
+
   if (provider === "whatsapp-review" && req.method === "GET") {
     return handleWhatsAppReview(req, res);
+  }
+
+  if (provider === "wechat-review" && req.method === "GET") {
+    return handleWeChatReview(req, res);
   }
 
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
@@ -138,6 +147,10 @@ export default async function handler(req, res) {
 
   if (provider === "whatsapp") {
     return handleWhatsAppWebhook(req, res, rawBody);
+  }
+
+  if (provider === "wechat") {
+    return handleWeChatWebhook(req, res, rawBody);
   }
 
   let body;
