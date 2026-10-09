@@ -3,6 +3,76 @@ import { getPolicyConfig } from "./_lib/policy.js";
 import { telegramReadiness } from "./_lib/telegram.js";
 import { whatsappReadiness } from "./_lib/whatsapp.js";
 import { wechatReadiness } from "./_lib/wechat.js";
+import { listAuditEvents } from "./_lib/db.js";
+
+
+async function whatsappDiagnostic() {
+  const token = String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
+  const phoneId = String(process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
+  const version = String(process.env.WHATSAPP_GRAPH_VERSION || "v25.0").trim();
+
+  let phoneProbe = { ok: false, reason: "missing_credentials" };
+  if (token && phoneId) {
+    try {
+      const response = await fetch(
+        `https://graph.facebook.com/${version}/${encodeURIComponent(phoneId)}?fields=id,display_phone_number,verified_name,quality_rating`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const data = await response.json().catch(() => ({}));
+      phoneProbe = response.ok && !data?.error
+        ? {
+            ok: true,
+            httpStatus: response.status,
+            idMatchesConfigured: String(data.id || "") === phoneId,
+            hasDisplayPhoneNumber: Boolean(data.display_phone_number),
+            hasVerifiedName: Boolean(data.verified_name),
+            qualityRating: data.quality_rating || null
+          }
+        : {
+            ok: false,
+            httpStatus: response.status,
+            error: {
+              code: data?.error?.code ?? null,
+              subcode: data?.error?.error_subcode ?? null,
+              type: data?.error?.type || null,
+              message: data?.error?.message || null
+            }
+          };
+    } catch (error) {
+      phoneProbe = { ok: false, reason: "probe_failed", message: error?.message || "Unknown error" };
+    }
+  }
+
+  let events = [];
+  try {
+    events = await listAuditEvents(null, 300);
+  } catch {}
+
+  const whatsappEvents = events
+    .filter((event) => String(event.event_type || "").startsWith("whatsapp_"))
+    .slice(0, 50);
+  const inbound = whatsappEvents.filter(
+    (event) => event.event_type === "whatsapp_message_received"
+  );
+  const failures = whatsappEvents.filter(
+    (event) => String(event.event_type || "").includes("failed")
+  );
+
+  return {
+    phoneProbe,
+    audit: {
+      whatsappEvents: whatsappEvents.length,
+      inboundMessages: inbound.length,
+      failures: failures.length,
+      latestInboundAt: inbound[0]?.created_at || inbound[0]?.timestamp || null,
+      latestEventTypes: whatsappEvents.slice(0, 12).map((event) => ({
+        type: event.event_type,
+        at: event.created_at || event.timestamp || null,
+        messageType: event.data?.message_type || null
+      }))
+    }
+  };
+}
 
 export default async function handler(req, res) {
   const payoutProvider = getPayoutProviderReadiness();
@@ -10,6 +80,9 @@ export default async function handler(req, res) {
   const telegram = telegramReadiness();
   const whatsapp = whatsappReadiness();
   const wechat = wechatReadiness();
+  const diagnostic = String(req.query?.diagnostic || "").toLowerCase() === "whatsapp"
+    ? await whatsappDiagnostic()
+    : null;
   const checks = {
     ai: Boolean(process.env.GROQ_API_KEY),
     database: Boolean(process.env.DATABASE_URL),
@@ -45,6 +118,7 @@ export default async function handler(req, res) {
       telegram,
       wechat
     },
+    ...(diagnostic ? { whatsappDiagnostic: diagnostic } : {}),
     payoutPolicy: {
       configured: payoutPolicy.configured,
       allowedCurrencies: payoutPolicy.allowedCurrencies,
