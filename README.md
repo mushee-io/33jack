@@ -352,6 +352,17 @@ Configure the Official Account server URL as:
 
 For production, use WeChat **Security Mode** once URL verification succeeds. The callback is XML-based and 33Jack decrypts the encrypted `Encrypt` envelope server-side.
 
+**WeChat deployment checklist:**
+
+1. Create or use a verified Official Account / Service Account at [WeChat Official Accounts](https://mp.weixin.qq.com/). This integration is for Official Account messaging, not a standalone personal WeChat bot or Mini Program.
+2. In the developer configuration, set the callback URL above and configure `WECHAT_TOKEN`, `WECHAT_APP_ID`, `WECHAT_APP_SECRET`, and the 43-character `WECHAT_ENCODING_AES_KEY` as Vercel **server-side** environment variables.
+3. Set `WECHAT_REVIEW_SECRET` to an independent random string of at least 32 characters. Never reuse a published callback verification token for payment-review signatures.
+4. Verify the callback URL, then switch the WeChat console to **Security Mode (AES)** and set `WECHAT_REQUIRE_ENCRYPTION=true` in Vercel. Deploy the updated configuration.
+5. Send `HELLO`, `STATUS`, then an invoice image from the actual account. Check `/api/health` under `channels.wechat` for configuration flags (never secrets).
+6. Verify an invoice's Review & Pay link, approve only after reviewing its exact terms, and check for one demo/Devnet receipt. Run `npm run test:wechat` for local regression coverage.
+
+WeChat expects a webhook acknowledgement in about 5 seconds. On Vercel, 33Jack now acknowledges authenticated requests immediately and sends the AI reply asynchronously with `@vercel/functions` `waitUntil`. This is best-effort background processing bounded by the function timeout; for high-volume/production reliability, add a durable queue, retry worker and unique message-ID store.
+
 Outbound customer-service messages use the Official Account access token obtained server-side from `WECHAT_APP_ID` + `WECHAT_APP_SECRET`. Some WeChat account configurations require the server egress IP to be allowlisted; if WeChat returns an IP-whitelist error, use a stable outbound IP/proxy or a hosting setup with fixed egress.
 
 The controlled flow remains:
