@@ -190,7 +190,7 @@ try {
   const settled = await invoke(settle, "POST", { approvalToken: approved.data.approvalToken });
   assert.equal(settled.status, 200);
   assert.equal(settled.data.mode, "demo");
-  assert.equal(settled.data.wechatReceipt.ok, true);
+  assert.equal(settled.data.wechatReceipt.sent, true);
   assert.equal(outgoing.length, priorReceipts + 1);
   assert.match(outgoing.at(-1).text.content, /33Jack payment complete/);
 
