@@ -24,5 +24,7 @@ jobs:
         run: node -e "Promise.all([import('@solana/web3.js'), import('@solana/spl-token')]).then(([w]) => { new w.Connection('https://api.devnet.solana.com', 'confirmed'); console.log('solana settlement runtime ok') })"
       - name: Smoke backend flow
         run: npm run test:smoke
+      - name: Smoke WeChat integration
+        run: npm run test:wechat
       - name: Build frontend
         run: npm run build
