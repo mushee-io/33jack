@@ -13,7 +13,8 @@ const memory = globalThis.__33jackStore || (globalThis.__33jackStore = {
   members: [],
   preferences: [],
   invites: [],
-  beneficiaryControls: []
+  beneficiaryControls: [],
+  channelMessageClaims: new Set()
 });
 
 function db() {
@@ -99,6 +100,15 @@ export async function ensureSchema() {
   await client`
     create index if not exists jack_events_payment_idx
     on jack_events(payment_id, created_at desc)
+  `;
+
+  await client`
+    create table if not exists jack_channel_message_claims (
+      channel text not null,
+      message_id text not null,
+      claimed_at timestamptz not null default now(),
+      primary key (channel, message_id)
+    )
   `;
 
   await client`
@@ -388,6 +398,30 @@ export async function listAuditEvents(paymentId, limit = 50) {
     `;
   }
   return client`select * from jack_events order by created_at desc limit ${limit}`;
+}
+
+export async function claimChannelMessage(channel, messageId) {
+  const normalizedChannel = String(channel || "").trim().toLowerCase();
+  const normalizedMessageId = String(messageId || "").trim();
+  if (!normalizedChannel || !normalizedMessageId) return false;
+
+  const key = normalizedChannel + ":" + normalizedMessageId;
+  const client = db();
+
+  if (!client) {
+    if (memory.channelMessageClaims.has(key)) return false;
+    memory.channelMessageClaims.add(key);
+    return true;
+  }
+
+  await ensureSchema();
+  const rows = await client`
+    insert into jack_channel_message_claims (channel, message_id)
+    values (${normalizedChannel}, ${normalizedMessageId})
+    on conflict (channel, message_id) do nothing
+    returning message_id
+  `;
+  return rows.length === 1;
 }
 
 export async function getBeneficiaryHistory(supplier, destinationCurrency) {
