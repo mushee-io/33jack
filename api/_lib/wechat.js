@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { waitUntil } from "@vercel/functions";
 import OpenAI from "openai";
 import {
   addAuditEvent,
@@ -55,6 +56,18 @@ function wechatAppSecret() {
 
 function encodingAesKey() {
   return String(process.env.WECHAT_ENCODING_AES_KEY || "").trim();
+}
+
+function encryptionRequired() {
+  return /^(1|true|yes)$/i.test(String(process.env.WECHAT_REQUIRE_ENCRYPTION || "").trim());
+}
+
+function validWebhookTimestamp(req) {
+  const raw = String(req.query?.timestamp || "");
+  if (!/^\d{10,11}$/.test(raw)) return false;
+  const seconds = Number(raw);
+  return Number.isSafeInteger(seconds) &&
+    Math.abs(Math.floor(Date.now() / 1000) - seconds) <= 600;
 }
 
 function sha1Signature(parts = []) {
@@ -160,7 +173,7 @@ function decryptWeChatPayload(encrypted) {
   const message = full.subarray(messageStart, messageEnd).toString("utf8");
   const payloadAppId = full.subarray(messageEnd).toString("utf8");
   const configuredAppId = wechatAppId();
-  if (configuredAppId && payloadAppId && payloadAppId !== configuredAppId) {
+  if (!configuredAppId || payloadAppId !== configuredAppId) {
     throw new Error("WeChat encrypted payload AppID does not match");
   }
   return message;
@@ -168,7 +181,7 @@ function decryptWeChatPayload(encrypted) {
 
 function verifyPlainSignature(req) {
   const token = wechatToken();
-  if (!token) return false;
+  if (!token || !validWebhookTimestamp(req)) return false;
   const signature = String(req.query?.signature || "");
   const timestamp = String(req.query?.timestamp || "");
   const nonce = String(req.query?.nonce || "");
@@ -177,7 +190,7 @@ function verifyPlainSignature(req) {
 
 function verifyEncryptedSignature(req, encrypted) {
   const token = wechatToken();
-  if (!token) return false;
+  if (!token || !validWebhookTimestamp(req)) return false;
   const signature = String(req.query?.msg_signature || "");
   const timestamp = String(req.query?.timestamp || "");
   const nonce = String(req.query?.nonce || "");
@@ -196,6 +209,7 @@ export function wechatReadiness() {
     appIdConfigured: Boolean(wechatAppId()),
     appSecretConfigured: Boolean(wechatAppSecret()),
     encodingAesKeyConfigured: Boolean(encodingAesKey()),
+    encryptionRequired: encryptionRequired(),
     secureModeReady: Boolean(
       wechatToken() &&
       wechatAppId() &&
@@ -974,7 +988,7 @@ export async function handleWeChatWebhook(req, res, rawBody) {
     const echostr = String(req.query?.echostr || "");
     const encrypted = String(req.query?.encrypt_type || "").toLowerCase() === "aes";
 
-    if (encrypted && req.query?.msg_signature) {
+    if (encrypted) {
       if (!verifyEncryptedSignature(req, echostr)) {
         return responseText(res, 403, "Forbidden");
       }
@@ -985,7 +999,7 @@ export async function handleWeChatWebhook(req, res, rawBody) {
       }
     }
 
-    if (!verifyPlainSignature(req)) {
+    if (encryptionRequired() || !verifyPlainSignature(req)) {
       return responseText(res, 403, "Forbidden");
     }
     return responseText(res, 200, echostr);
@@ -1010,8 +1024,8 @@ export async function handleWeChatWebhook(req, res, rawBody) {
     } catch {
       return responseText(res, 400, "Invalid encrypted WeChat payload");
     }
-  } else if (!verifyPlainSignature(req)) {
-    return responseText(res, 401, "Invalid WeChat signature");
+  } else if (encryptionRequired() || !verifyPlainSignature(req)) {
+    return responseText(res, 401, "Invalid or unencrypted WeChat signature");
   }
 
   const message = parseIncomingXml(messageXml);
@@ -1019,9 +1033,7 @@ export async function handleWeChatWebhook(req, res, rawBody) {
     return responseText(res, 200, "success");
   }
 
-  try {
-    await processWeChatMessage(req, message);
-  } catch (error) {
+  const processing = processWeChatMessage(req, message).catch(async (error) => {
     await addAuditEvent(null, "wechat_message_failed", "wechat-webhook", {
       wechat_open_id: message.fromUserName,
       message_id: message.msgId || null,
@@ -1031,9 +1043,18 @@ export async function handleWeChatWebhook(req, res, rawBody) {
 
     await sendText(
       message.fromUserName,
-      `33Jack could not process that request: ${error?.message || "Unknown error"}`
+      "33Jack could not process that request. Please try again or contact support."
     ).catch(() => {});
+  });
+
+  // WeChat needs an acknowledgement within ~5 seconds. Vercel keeps the
+  // messaging task alive via waitUntil after the HTTP response has returned.
+  // Outside Vercel (including local tests), await processing for determinism.
+  if (process.env.VERCEL === "1") {
+    waitUntil(processing);
+    return responseText(res, 200, "success");
   }
 
+  await processing;
   return responseText(res, 200, "success");
 }
