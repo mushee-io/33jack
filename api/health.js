@@ -110,7 +110,60 @@ async function whatsappDiagnostic() {
 }
 
 export default async function handler(req, res) {
-  const payoutProvider = getPayoutProviderReadiness();
+  if (
+    req.method === "GET" &&
+    String(req.query?.diagnostic || "").toLowerCase() === "whatsapp" &&
+    String(req.query?.send || "") === "latest"
+  ) {
+    const token = String(process.env.WHATSAPP_ACCESS_TOKEN || "").trim();
+    const phoneId = String(process.env.WHATSAPP_PHONE_NUMBER_ID || "").trim();
+    const version = String(process.env.WHATSAPP_GRAPH_VERSION || "v25.0").trim();
+    const events = await listAuditEvents(null, 300).catch(() => []);
+    const latest = events.find((event) =>
+      event.event_type === "whatsapp_message_received" &&
+      event.data?.whatsapp_user_id
+    );
+    if (!latest?.data?.whatsapp_user_id) {
+      return res.status(404).json({ ok: false, error: "No inbound WhatsApp user found" });
+    }
+    try {
+      const response = await fetch(
+        `https://graph.facebook.com/${version}/${encodeURIComponent(phoneId)}/messages`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            messaging_product: "whatsapp",
+            recipient_type: "individual",
+            to: String(latest.data.whatsapp_user_id),
+            type: "text",
+            text: { preview_url: false, body: "33Jack WhatsApp test ✅" }
+          })
+        }
+      );
+      const data = await response.json().catch(() => ({}));
+      return res.status(response.ok ? 200 : response.status).json({
+        ok: response.ok,
+        meta: response.ok
+          ? { accepted: Boolean(data?.messages?.[0]?.id), status: response.status }
+          : {
+              status: response.status,
+              code: data?.error?.code ?? null,
+              subcode: data?.error?.error_subcode ?? null,
+              type: data?.error?.type || null,
+              message: data?.error?.message || null,
+              details: data?.error?.error_data?.details || null
+            }
+      });
+    } catch (error) {
+      return res.status(500).json({ ok: false, error: error?.message || "Outbound probe failed" });
+    }
+  }
+
+    const payoutProvider = getPayoutProviderReadiness();
   const payoutPolicy = getPolicyConfig();
   const telegram = telegramReadiness();
   const whatsapp = whatsappReadiness();
