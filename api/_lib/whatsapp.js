@@ -584,6 +584,22 @@ function extractMessages(payload = {}) {
   return messages;
 }
 
+function extractStatuses(payload = {}) {
+  const statuses = [];
+  for (const entry of payload.entry || []) {
+    for (const change of entry?.changes || []) {
+      const value = change?.value || {};
+      for (const status of value.statuses || []) {
+        statuses.push({
+          ...status,
+          metadata: value.metadata || {}
+        });
+      }
+    }
+  }
+  return statuses;
+}
+
 export async function handleWhatsAppReview(req, res) {
   try {
     const paymentId = String(req.query?.paymentId || "").trim();
@@ -720,9 +736,26 @@ export async function handleWhatsAppWebhook(req, res, rawBody) {
     return res.status(400).json({ error: "Invalid WhatsApp webhook JSON" });
   }
 
+  const statuses = extractStatuses(payload);
+  for (const status of statuses) {
+    const errors = Array.isArray(status.errors) ? status.errors : [];
+    await addAuditEvent(null, "whatsapp_delivery_status", "whatsapp-webhook", {
+      whatsapp_message_id: String(status.id || ""),
+      status: String(status.status || "unknown"),
+      recipient_id: String(status.recipient_id || ""),
+      conversation_id: String(status.conversation?.id || ""),
+      pricing_model: String(status.pricing?.pricing_model || ""),
+      billable: status.pricing?.billable == null ? null : Boolean(status.pricing.billable),
+      error_code: errors[0]?.code ?? null,
+      error_title: errors[0]?.title || null,
+      error_message: errors[0]?.message || null,
+      error_details: errors[0]?.error_data?.details || null
+    }).catch(() => {});
+  }
+
   const messages = extractMessages(payload);
   if (!messages.length) {
-    return res.status(200).json({ ok: true, ignored: true });
+    return res.status(200).json({ ok: true, ignored: true, statuses: statuses.length });
   }
 
   for (const message of messages) {
