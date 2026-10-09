@@ -159,7 +159,7 @@ try {
 
   const identity = "wechat:openid_ci";
   const member = await getOrCreateTelegramWorkspace({ id: identity, first_name: "WeChat CI" });
-  const rawInvoice = Buffer.from("Invoice WX-CI-77 Supplier: Shenzhen Example Ltd Amount due: GBP 1250 Target: CNY").toString("base64");
+  const rawInvoice = Buffer.from("INVOICE WX-CI-77\\nSupplier: Shenzhen Example Ltd\\nAmount due: GBP 1250\\nTarget: CNY").toString("base64");
   const analysis = await invoke(analyze, "POST", {
     fileName: "wechat-ci-invoice.txt", mimeType: "text/plain",
     fileData: rawInvoice, corridor: "CNY"
