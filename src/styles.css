@@ -1377,3 +1377,655 @@ button.landing-channel-pill{
   .landing-product-card h3{font-size:20px}
   .landing-section-head h2,.landing-interface-copy h2,.landing-safety h2,.landing-final-cta h2{font-size:36px}
 }
+
+
+/* ─────────────────────────────────────────────────────────────
+   33JACK INTERIOR — minimal editorial system
+   Scoped to /app so the public homepage keeps its own design.
+   ───────────────────────────────────────────────────────────── */
+.alwayzz-app{
+  --bg:#ffffff;
+  --text:#0a0a0a;
+  --muted:#6b6b6b;
+  --button-bg:#0a0a0a;
+  --button-text:#ffffff;
+  --border-soft:rgba(0,0,0,.08);
+  --green:#17c964;
+  min-height:100vh;
+  display:block;
+  color:var(--text);
+  background:var(--bg);
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  letter-spacing:-.025em;
+}
+.alwayzz-app *{letter-spacing:inherit}
+.alwayzz-app.menu-open{height:100vh;overflow:hidden}
+.alwayzz-app .app-main{min-width:0;background:#fff}
+.alwayzz-app .content{padding:0 36px 72px;max-width:none;margin:0}
+.alwayzz-app .content>*{max-width:1200px;margin-left:auto;margin-right:auto}
+
+/* Fixed editorial navbar */
+.app-topnav-wrap{
+  position:fixed;
+  inset:0 0 auto;
+  z-index:100;
+  background:rgba(255,255,255,.88);
+  backdrop-filter:blur(18px);
+  -webkit-backdrop-filter:blur(18px);
+}
+.app-topnav{
+  max-width:1200px;
+  height:82px;
+  margin:0 auto;
+  padding:19px 36px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+.app-wordmark{
+  display:inline-flex;
+  align-items:flex-start;
+  gap:4px;
+  border:0;
+  padding:0;
+  background:transparent;
+  color:#0a0a0a;
+}
+.app-wordmark span{
+  font-family:"Source Serif 4",Georgia,serif;
+  font-size:30px;
+  font-style:italic;
+  font-weight:600;
+  line-height:1;
+  letter-spacing:-.08em;
+}
+.app-wordmark sup{
+  font-family:Inter,sans-serif;
+  font-size:14px;
+  font-style:normal;
+  font-weight:600;
+  line-height:1;
+  letter-spacing:-.03em;
+}
+.app-menu-pill{
+  min-height:42px;
+  padding:0 17px 0 19px;
+  border:0;
+  border-radius:999px;
+  background:#0a0a0a;
+  color:#fff;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  font-family:Inter,sans-serif;
+  font-size:14px;
+  font-weight:500;
+  letter-spacing:-.025em;
+}
+.app-menu-pill svg{transition:transform .35s ease}
+.app-menu-pill.open svg{transform:rotate(180deg)}
+
+/* Full-screen navigation drawer */
+.app-drawer{
+  position:fixed;
+  inset:0;
+  z-index:90;
+  padding:118px 36px 30px;
+  background:#fff;
+  opacity:0;
+  visibility:hidden;
+  pointer-events:none;
+  transition:opacity .4s ease,visibility .4s ease;
+  display:grid;
+  grid-template-rows:1fr auto;
+}
+.app-drawer.open{opacity:1;visibility:visible;pointer-events:auto}
+.app-drawer-links{
+  align-self:center;
+  display:grid;
+  justify-items:center;
+  gap:5px;
+  max-height:68vh;
+  overflow:auto;
+  padding:24px 0;
+}
+.app-drawer-links button{
+  border:0;
+  background:transparent;
+  color:#111;
+  padding:2px 10px;
+  font-size:clamp(32px,4vw,48px);
+  line-height:1.12;
+  font-weight:500;
+  letter-spacing:-.04em;
+  transition:opacity .2s ease,transform .2s ease;
+}
+.app-drawer-links button:hover{opacity:.52;transform:translateX(2px)}
+.app-drawer-links button.active{
+  font-family:"Source Serif 4",Georgia,serif;
+  font-style:italic;
+  font-weight:600;
+}
+.app-drawer-footer{
+  max-width:1200px;
+  width:100%;
+  margin:0 auto;
+  border-top:1px solid var(--border-soft);
+  padding-top:18px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  color:#777;
+  font-size:12px;
+}
+.app-drawer-footer button{
+  border:0;
+  background:transparent;
+  color:#0a0a0a;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size:13px;
+  font-weight:600;
+}
+
+/* Overview editorial hero */
+.alwayzz-app .app-interior-hero{
+  max-width:none;
+  width:calc(100% + 72px);
+  margin-left:-36px;
+  margin-right:-36px;
+  min-height:850px;
+  padding:160px 36px 150px;
+  border:0;
+  border-radius:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  position:relative;
+  overflow:hidden;
+  background:#fff;
+  isolation:isolate;
+}
+.alwayzz-app .app-interior-hero::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  z-index:-3;
+  background-image:url("https://images.higgs.ai/?default=1&output=webp&url=https%3A%2F%2Fd8j0ntlcm91z4.cloudfront.net%2Fuser_38xzZboKViGWJOttwIXH07lWA1P%2Fhf_20260626_041422_4a459e05-abce-4150-9fb7-4ededc423cd1.png&w=1280&q=85");
+  background-size:cover;
+  background-position:center;
+}
+.alwayzz-app .app-interior-hero::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  z-index:-2;
+  background:radial-gradient(circle at center,rgba(255,255,255,.76) 0%,rgba(255,255,255,.46) 34%,rgba(255,255,255,.10) 72%);
+  pointer-events:none;
+}
+.app-hero-content{
+  width:100%;
+  position:relative;
+  z-index:3;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  text-align:center;
+}
+.app-ticker{
+  width:min(500px,90vw);
+  height:36px;
+  overflow:hidden;
+  margin-bottom:30px;
+  -webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 12%,#000 88%,transparent 100%);
+  mask-image:linear-gradient(90deg,transparent 0%,#000 12%,#000 88%,transparent 100%);
+}
+.app-ticker-track{
+  width:max-content;
+  height:100%;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  animation:marquee-left 30s linear infinite;
+}
+.app-ticker-track span{
+  flex:0 0 auto;
+  padding:6px 14px;
+  border-radius:999px;
+  background:rgb(251,251,251);
+  color:var(--muted);
+  font-size:13px;
+  line-height:1;
+  font-weight:500;
+  letter-spacing:-.025em;
+}
+.alwayzz-app .app-interior-hero h1{
+  max-width:760px;
+  margin:0;
+  color:#0a0a0a;
+  font-size:clamp(64px,6.3vw,82px);
+  line-height:1.03;
+  font-weight:600;
+  letter-spacing:-.07em;
+}
+.alwayzz-app .app-interior-hero h1 .serif-italic{
+  font-family:"Source Serif 4",Georgia,serif;
+  font-style:italic;
+  font-weight:600;
+  letter-spacing:-.08em;
+}
+.alwayzz-app .app-interior-hero h1 sup{
+  font-family:Inter,sans-serif;
+  font-size:24px;
+  font-weight:600;
+  line-height:0;
+  vertical-align:super;
+  letter-spacing:-.03em;
+}
+.alwayzz-app .app-interior-hero .app-hero-content>p{
+  max-width:476px;
+  margin:26px auto 0;
+  color:var(--muted);
+  font-size:17px;
+  line-height:1.45;
+  font-weight:400;
+  letter-spacing:-.025em;
+}
+.app-hero-cta{
+  margin-top:30px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:16px;
+}
+.app-primary-pill{
+  height:56px;
+  padding:18px 30px;
+  border:0;
+  border-radius:999px;
+  background:#0a0a0a;
+  color:#fff;
+  font-family:Inter,sans-serif;
+  font-size:15px;
+  font-weight:600;
+  letter-spacing:-.025em;
+  transition:transform .2s ease,box-shadow .2s ease;
+}
+.app-primary-pill:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(0,0,0,.12)}
+.app-chat-pill{
+  min-height:56px;
+  padding:8px 24px 8px 8px;
+  border:4px solid rgb(248,248,248);
+  border-radius:999px;
+  background:#fff;
+  display:flex;
+  align-items:center;
+  gap:11px;
+  color:#0a0a0a;
+  text-align:left;
+}
+.app-chat-pill img{
+  width:40px;
+  height:40px;
+  border-radius:50%;
+  object-fit:cover;
+}
+.app-chat-pill>span{display:grid;gap:3px}
+.app-chat-pill b{font-size:14px;font-weight:600;letter-spacing:-.025em}
+.app-chat-pill small{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  color:rgb(152,152,152);
+  font-size:12px;
+  font-weight:500;
+}
+.app-chat-pill small i{width:8px;height:8px;border-radius:50%;background:rgb(29,204,93)}
+.app-progressive-blur{
+  position:absolute;
+  inset:auto 0 0;
+  height:178px;
+  z-index:4;
+  pointer-events:none;
+  background:linear-gradient(to bottom,transparent 0%,rgba(255,255,255,.4) 40%,#fff 100%);
+}
+
+/* Animated contour lines */
+.hero-lines{position:absolute;z-index:1;pointer-events:none}
+.hero-lines-left,.hero-lines-right{
+  inset:50% auto auto 0;
+  width:31vw;
+  height:620px;
+  transform:translateY(-50%);
+}
+.hero-lines-right{left:auto;right:0}
+.hero-lines-left i,.hero-lines-right i{
+  position:absolute;
+  top:50%;
+  height:510px;
+  opacity:0;
+  animation:line-pulse 5s ease-in-out infinite;
+}
+.hero-lines-left i{
+  left:-155px;
+  border:2.5px solid #FCFAF8;
+  border-left:0;
+  border-radius:0 80% 80% 0;
+}
+.hero-lines-right i{
+  right:-155px;
+  border:2.5px solid #FCFAF8;
+  border-right:0;
+  border-radius:80% 0 0 80%;
+}
+.hero-lines-top{display:none}
+
+/* Infrastructure marquee */
+.app-trusted{
+  min-height:122px;
+  padding:36px 0;
+  display:grid;
+  grid-template-columns:190px minmax(0,1fr);
+  gap:46px;
+  align-items:center;
+  border-bottom:1px solid var(--border-soft);
+}
+.app-trusted>p{
+  max-width:163px;
+  margin:0;
+  color:var(--muted);
+  font-size:14px;
+  line-height:1.35;
+  font-weight:500;
+}
+.app-trusted-marquee{
+  min-width:0;
+  overflow:hidden;
+  -webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 12%,#000 88%,transparent 100%);
+  mask-image:linear-gradient(90deg,transparent 0%,#000 12%,#000 88%,transparent 100%);
+}
+.app-trusted-track{
+  width:max-content;
+  display:flex;
+  align-items:center;
+  gap:42px;
+  animation:marquee-left 30s linear infinite;
+}
+.app-trusted-track span{
+  flex:0 0 auto;
+  color:#0a0a0a;
+  font-size:16px;
+  font-weight:600;
+  white-space:nowrap;
+}
+.app-trusted-track .logo-0{font-family:"Source Serif 4",Georgia,serif;font-style:italic;font-weight:600}
+.app-trusted-track .logo-1{font-family:system-ui,sans-serif;font-weight:800}
+.app-trusted-track .logo-2{font-family:Georgia,serif;font-weight:500}
+.app-trusted-track .logo-3{font-family:Inter,sans-serif;font-weight:600}
+.app-trusted-track .logo-4{font-family:Inter,sans-serif;font-weight:700}
+
+/* White interior system across every 33JACK workspace */
+.alwayzz-app .workspace-page,
+.alwayzz-app .card,
+.alwayzz-app .workflow,
+.alwayzz-app .channel-section,
+.alwayzz-app .rail-section,
+.alwayzz-app .records-card,
+.alwayzz-app .agent-console,
+.alwayzz-app .channel-card,
+.alwayzz-app .recent,
+.alwayzz-app .agent-card{
+  background:#fff;
+  color:#0a0a0a;
+  border-color:var(--border-soft);
+  box-shadow:none;
+}
+.alwayzz-app .workspace-page{
+  margin-top:118px;
+  min-height:calc(100vh - 166px);
+  padding:42px;
+  border-radius:26px;
+}
+.alwayzz-app .eyebrow{
+  color:#8a8a8a;
+  font-size:10px;
+  font-weight:600;
+  letter-spacing:.12em;
+}
+.alwayzz-app h1,
+.alwayzz-app h2,
+.alwayzz-app h3,
+.alwayzz-app h4,
+.alwayzz-app b,
+.alwayzz-app strong{color:#0a0a0a}
+.alwayzz-app p,
+.alwayzz-app small,
+.alwayzz-app .metric-top,
+.alwayzz-app .section-head>p,
+.alwayzz-app .flow-copy p,
+.alwayzz-app .operator-message p{color:var(--muted)}
+.alwayzz-app .primary{
+  border-color:#0a0a0a;
+  background:#0a0a0a;
+  color:#fff;
+  box-shadow:none;
+  border-radius:999px;
+  font-weight:600;
+}
+.alwayzz-app .primary:hover{background:#242424}
+.alwayzz-app .secondary{
+  border-color:var(--border-soft);
+  background:#fff;
+  color:#0a0a0a;
+  border-radius:999px;
+}
+.alwayzz-app .network-dot{
+  color:#16894a;
+  border-color:rgba(23,201,100,.18);
+  background:rgba(23,201,100,.06);
+}
+.alwayzz-app .metric{padding:21px 22px;border-radius:18px}
+.alwayzz-app .metric strong{font-size:30px;font-weight:600;letter-spacing:-.05em}
+.alwayzz-app .metric-accent,
+.alwayzz-app .green,
+.alwayzz-app .step>svg,
+.alwayzz-app .rails>div svg,
+.alwayzz-app .sol-symbol{color:var(--green)}
+.alwayzz-app .panel-grid{margin-top:16px}
+.alwayzz-app .recent,
+.alwayzz-app .agent-card,
+.alwayzz-app .workflow,
+.alwayzz-app .channel-section,
+.alwayzz-app .rail-section{border-radius:22px}
+.alwayzz-app .tr{border-color:rgba(0,0,0,.06);color:#555}
+.alwayzz-app .tr.th{color:#999}
+.alwayzz-app .tr b{color:#0a0a0a}
+.alwayzz-app .tr small{color:#999}
+.alwayzz-app .tr>span:first-child .company-icon{
+  background:#f6f6f6;
+  color:#555;
+}
+.alwayzz-app .pill.good{background:rgba(23,201,100,.08);color:#16894a}
+.alwayzz-app .pill.warn{background:rgba(220,155,25,.10);color:#95630b}
+.alwayzz-app .pill.bad{background:rgba(220,50,67,.08);color:#b92536}
+.alwayzz-app .agent-glow,
+.alwayzz-app .mini-orb{
+  background:rgba(23,201,100,.08);
+  color:var(--green);
+}
+.alwayzz-app .agent-task{border-color:rgba(0,0,0,.06);color:#777}
+.alwayzz-app .agent-task b{color:#0a0a0a}
+.alwayzz-app .agent-task p{color:#8b8b8b}
+.alwayzz-app .agent-command{
+  border-color:rgba(0,0,0,.08);
+  background:#fafafa;
+  color:#0a0a0a;
+  border-radius:999px;
+}
+.alwayzz-app .step{
+  border-color:rgba(0,0,0,.07);
+  background:#fff;
+  border-radius:16px;
+}
+.alwayzz-app .step .num{color:#aaa}
+.alwayzz-app .step p{color:#777}
+.alwayzz-app .channel-tabs{
+  background:#f7f7f7;
+  border-color:rgba(0,0,0,.06);
+}
+.alwayzz-app .channel-tabs button{color:#777}
+.alwayzz-app .channel-tabs button.active{background:#fff;color:#0a0a0a;box-shadow:0 1px 4px rgba(0,0,0,.06)}
+.alwayzz-app .channel-card{box-shadow:0 24px 70px rgba(0,0,0,.06)}
+.alwayzz-app .chat-head{border-color:rgba(0,0,0,.06)}
+.alwayzz-app .chat-head small{color:#999}
+.alwayzz-app .chat-head>span{color:#16894a}
+.alwayzz-app .avatar{background:#0a0a0a;color:#fff}
+.alwayzz-app .chat-body{background:#fbfbfb}
+.alwayzz-app .bubble.user{background:#0a0a0a;color:#fff}
+.alwayzz-app .bubble.bot{background:#f0f0f0;color:#333}
+.alwayzz-app .bubble.compact p{color:#0a0a0a}
+.alwayzz-app .attachment{border-color:rgba(23,201,100,.18);background:rgba(23,201,100,.05)}
+.alwayzz-app .chat-cta{background:#0a0a0a;color:#fff;border-radius:999px}
+.alwayzz-app .rails>div{
+  border-color:rgba(0,0,0,.07);
+  background:#fff;
+  border-radius:16px;
+}
+.alwayzz-app .rails b{color:#0a0a0a}
+.alwayzz-app .rails small{color:#888}
+.alwayzz-app footer{color:#8a8a8a}
+.alwayzz-app footer .brand{color:#0a0a0a}
+
+/* Records and agent surfaces */
+.alwayzz-app .records-head{color:#999;border-color:rgba(0,0,0,.07)}
+.alwayzz-app .records-row{border-color:rgba(0,0,0,.06);color:#555}
+.alwayzz-app .records-row b{color:#0a0a0a}
+.alwayzz-app .records-row small{color:#999}
+.alwayzz-app .status-raw{color:#16894a}
+.alwayzz-app .empty-records{color:#888}
+.alwayzz-app .agent-transcript{background:#fbfbfb}
+.alwayzz-app .operator-message>span{background:#f0f0f0;color:#0a0a0a}
+.alwayzz-app .operator-message.user>span{background:#0a0a0a;color:#fff}
+
+/* Payment modal follows the same interior language */
+.alwayzz-app .modal-wrap{background:rgba(255,255,255,.68);backdrop-filter:blur(18px)}
+.alwayzz-app .modal{
+  background:#fff;
+  color:#0a0a0a;
+  border-color:rgba(0,0,0,.09);
+  box-shadow:0 40px 120px rgba(0,0,0,.14);
+}
+.alwayzz-app .modal-head{border-color:rgba(0,0,0,.07)}
+.alwayzz-app .icon-btn{border-color:rgba(0,0,0,.08);background:#fff;color:#555}
+.alwayzz-app .dropzone{border-color:rgba(0,0,0,.15);background:#fbfbfb;color:#777}
+.alwayzz-app .dropzone strong{color:#0a0a0a}
+.alwayzz-app .dropzone svg{color:var(--green)}
+.alwayzz-app .chip{border-color:rgba(0,0,0,.09);background:#fff;color:#666}
+.alwayzz-app .chip.active{border-color:rgba(23,201,100,.28);background:rgba(23,201,100,.06);color:#16894a}
+.alwayzz-app .progress{background:#efefef}
+.alwayzz-app .progress i{background:#0a0a0a}
+.alwayzz-app .analysis-card{border-color:rgba(0,0,0,.07)}
+.alwayzz-app .proposal{background:#fafafa}
+.alwayzz-app .check-list>div{
+  border-color:rgba(0,0,0,.07);
+  background:#fff;
+  color:var(--green);
+}
+.alwayzz-app .check-list>div.warning{border-color:rgba(220,155,25,.2);background:rgba(220,155,25,.04);color:#b47913}
+.alwayzz-app .check-list b{color:#0a0a0a}
+.alwayzz-app .check-list small{color:#777}
+.alwayzz-app .proposal-lines{border-color:rgba(0,0,0,.08)}
+.alwayzz-app .proposal-lines span{color:#777}
+.alwayzz-app .route span{border-color:rgba(0,0,0,.09)}
+.alwayzz-app .route svg{color:#999}
+.alwayzz-app .ack{color:#777}
+.alwayzz-app .fine{color:#999}
+.alwayzz-app .settle-row{border-color:rgba(0,0,0,.07);color:#aaa}
+.alwayzz-app .settle-row.current{color:#0a0a0a}
+.alwayzz-app .settle-row.current>span{border-color:var(--green)}
+.alwayzz-app .settle-row.complete{color:#16894a}
+.alwayzz-app .settle-row.complete>span{background:var(--green);color:#fff;border-color:var(--green)}
+.alwayzz-app .receipt{border-color:rgba(0,0,0,.09)}
+.alwayzz-app .receipt>div{border-color:rgba(0,0,0,.06)}
+.alwayzz-app .receipt span{color:#777}
+
+@keyframes marquee-left{
+  from{transform:translateX(0)}
+  to{transform:translateX(-50%)}
+}
+@keyframes line-pulse{
+  0%{opacity:0;transform:translateY(-50%) scale(1)}
+  15%{opacity:.9}
+  70%{opacity:.4}
+  100%{opacity:0;transform:translateY(-50%) scale(.85)}
+}
+
+@media(max-width:1200px){
+  .app-topnav{padding-left:32px;padding-right:32px}
+  .app-drawer-links button{font-size:40px}
+  .alwayzz-app .app-interior-hero{padding:140px 32px;width:calc(100% + 72px)}
+  .alwayzz-app .app-interior-hero h1{font-size:clamp(60px,8vw,72px)}
+}
+
+@media(max-width:810px){
+  .app-topnav{height:72px;padding:16px 20px}
+  .app-wordmark span{font-size:27px}
+  .app-drawer{padding:94px 20px 24px}
+  .app-drawer-links{gap:8px}
+  .app-drawer-links button{font-size:32px}
+  .app-drawer-footer{align-items:flex-start;gap:14px;flex-direction:column}
+  .alwayzz-app .content{padding:0 24px 48px}
+  .alwayzz-app .app-interior-hero{
+    width:calc(100% + 48px);
+    margin-left:-24px;
+    margin-right:-24px;
+    min-height:760px;
+    padding:120px 24px 96px;
+  }
+  .alwayzz-app .app-interior-hero::before{
+    inset:-35%;
+    transform:rotate(90deg) scale(1.28);
+  }
+  .hero-lines-left,.hero-lines-right{display:none}
+  .hero-lines-top{
+    display:block;
+    left:50%;
+    top:-120px;
+    width:680px;
+    height:330px;
+    transform:translateX(-50%);
+  }
+  .hero-lines-top i{
+    position:absolute;
+    left:50%;
+    top:0;
+    height:260px;
+    transform:translateX(-50%);
+    border:2.5px solid #FCFAF8;
+    border-top:0;
+    border-radius:0 0 80% 80%;
+    opacity:0;
+    animation:line-pulse-mobile 5s ease-in-out infinite;
+  }
+  .alwayzz-app .app-interior-hero h1{font-size:clamp(44px,13vw,52px)}
+  .alwayzz-app .app-interior-hero h1 sup{font-size:18px}
+  .alwayzz-app .app-interior-hero .app-hero-content>p{font-size:15px}
+  .app-hero-cta{
+    width:min(320px,100%);
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .app-primary-pill,.app-chat-pill{width:100%;justify-content:center}
+  .app-trusted{grid-template-columns:1fr;gap:24px;padding:36px 0}
+  .app-trusted>p{max-width:260px}
+  .alwayzz-app .workspace-page{margin-top:96px;padding:24px;border-radius:20px}
+}
+
+@keyframes line-pulse-mobile{
+  0%{opacity:0;transform:translateX(-50%) scale(1)}
+  15%{opacity:.9}
+  70%{opacity:.4}
+  100%{opacity:0;transform:translateX(-50%) scale(.85)}
+}
