@@ -1119,6 +1119,75 @@ button:disabled {
 .landing-proof{display:flex;flex-wrap:wrap;gap:15px;margin-top:24px;color:#788597;font-size:9px;font-weight:700}
 .landing-proof span{display:flex;align-items:center;gap:5px}.landing-proof svg{color:#52dca0}
 
+.landing-channel-row{
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-top:18px;
+}
+.landing-channel-label{
+  color:#536072;
+  font-size:7px;
+  font-weight:900;
+  letter-spacing:.16em;
+  margin-right:2px;
+}
+.landing-channel-pill{
+  min-height:40px;
+  padding:6px 9px 6px 7px;
+  border:1px solid rgba(255,255,255,.07);
+  border-radius:11px;
+  background:rgba(255,255,255,.022);
+  display:flex;
+  align-items:center;
+  gap:8px;
+  color:#d8e0e9;
+}
+button.landing-channel-pill{
+  cursor:pointer;
+  font:inherit;
+  text-align:left;
+}
+.landing-channel-pill.live{
+  border-color:rgba(66,245,155,.18);
+  background:rgba(66,245,155,.035);
+}
+.landing-channel-logo{
+  width:28px;
+  height:28px;
+  border-radius:8px;
+  display:grid;
+  place-items:center;
+  flex:0 0 auto;
+}
+.landing-channel-logo img{width:15px;height:15px;display:block}
+.landing-channel-logo.telegram{background:#229ed9}
+.landing-channel-logo.whatsapp{background:#25d366}
+.landing-channel-logo.wechat{background:#07c160}
+.landing-channel-logo.snapchat{background:#fffc00}
+.landing-channel-pill>span:last-child{display:grid;gap:1px}
+.landing-channel-pill b{font-size:8px;line-height:1}
+.landing-channel-pill small{
+  color:#667487;
+  font-size:6px;
+  line-height:1;
+  display:flex;
+  align-items:center;
+  gap:4px;
+}
+.landing-channel-pill small i{
+  width:4px;
+  height:4px;
+  border-radius:50%;
+  background:#596576;
+}
+.landing-channel-pill.live small{color:#6bddaa}
+.landing-channel-pill.live small i{
+  background:#42f59b;
+  box-shadow:0 0 7px rgba(66,245,155,.65);
+}
+
 .landing-console{
   position:relative;
   z-index:2;
@@ -1289,6 +1358,9 @@ button:disabled {
   .landing-main{width:min(100% - 28px,1240px)}
   .landing-hero{min-height:auto;padding:65px 0 58px}.landing-hero h1{font-size:clamp(44px,13vw,64px)}.landing-hero-copy>p{font-size:13px}
   .landing-hero-actions{align-items:stretch;flex-direction:column}.landing-hero-actions button{width:100%}.landing-proof{gap:9px;flex-direction:column}
+  .landing-channel-row{align-items:stretch;display:grid;grid-template-columns:1fr 1fr;margin-top:20px}
+  .landing-channel-label{grid-column:1/-1;margin-bottom:2px}
+  .landing-channel-pill{min-width:0;width:100%}
   .landing-console{padding:12px}.landing-console-top>span{display:none}.landing-proposal{grid-template-columns:1fr}.landing-route-mini{justify-content:flex-start}
   .landing-strip{overflow:hidden;justify-content:flex-start;gap:18px}
   .landing-section{padding:78px 0}.landing-section-head{align-items:flex-start;flex-direction:column;gap:16px;margin-bottom:30px}
