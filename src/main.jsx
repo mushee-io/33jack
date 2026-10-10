@@ -2416,8 +2416,259 @@ function RecordsWorkspace({ type, payments, onNewPayment }) {
   );
 }
 
+
+function HomePage() {
+  const openApp = (view = "") => {
+    window.location.href = view
+      ? `/app?view=${encodeURIComponent(view)}`
+      : "/app";
+  };
+
+  return (
+    <div className="landing">
+      <nav className="landing-nav">
+        <a className="landing-logo" href="/" aria-label="33jack home"><Logo/></a>
+        <div className="landing-nav-links">
+          <a href="#product">Product</a>
+          <a href="#how">How it works</a>
+          <a href="#channels">Interfaces</a>
+          <a href="#rails">Infrastructure</a>
+        </div>
+        <button className="landing-nav-cta" onClick={() => openApp()}>
+          Open 33JACK <ArrowRight size={15}/>
+        </button>
+      </nav>
+
+      <main className="landing-main">
+        <section className="landing-hero">
+          <div className="landing-hero-copy">
+            <div className="landing-kicker"><span/> AI FINANCE OPERATOR FOR GLOBAL BUSINESSES</div>
+            <h1>Your finance team can <em>move faster.</em><br/>33JACK does the money work.</h1>
+            <p>
+              Read the invoice. Catch the risk. Find the route. Get exact approval.
+              Settle through connected rails and reconcile the result — from one operator.
+            </p>
+            <div className="landing-hero-actions">
+              <button className="landing-primary" onClick={() => openApp()}>
+                Launch 33JACK <ArrowRight size={17}/>
+              </button>
+              <button className="landing-secondary" onClick={() => openApp("Voice Pay β")}>
+                <Mic size={16}/> Try Voice Pay
+              </button>
+            </div>
+            <div className="landing-proof">
+              <span><CheckCircle2 size={14}/> Human-approved execution</span>
+              <span><CheckCircle2 size={14}/> Solana Devnet live</span>
+              <span><CheckCircle2 size={14}/> Wise Sandbox connected</span>
+            </div>
+          </div>
+
+          <div className="landing-console">
+            <div className="landing-console-top">
+              <div><span className="landing-live-dot"/>33JACK OPERATOR</div>
+              <span>AUTONOMOUS PREP · HUMAN APPROVAL</span>
+            </div>
+            <div className="landing-command">
+              <div className="landing-command-icon"><Bot size={20}/></div>
+              <div>
+                <small>INSTRUCTION</small>
+                <b>Pay Shenzhen Nova Parts invoice CN-44018</b>
+              </div>
+            </div>
+            <div className="landing-op-flow">
+              <div className="landing-op-step done">
+                <span><FileText size={16}/></span>
+                <div><small>01 · INVOICE</small><b>¥42,000 extracted</b><p>Supplier and payment terms parsed.</p></div>
+                <Check size={15}/>
+              </div>
+              <div className="landing-op-step warn">
+                <span><ShieldCheck size={16}/></span>
+                <div><small>02 · RISK</small><b>Beneficiary change detected</b><p>Manual acknowledgement required.</p></div>
+                <TriangleAlert size={15}/>
+              </div>
+              <div className="landing-op-step done">
+                <span><RefreshCw size={16}/></span>
+                <div><small>03 · ROUTE</small><b>USD → USDG → CNY</b><p>Best eligible route prepared.</p></div>
+                <Check size={15}/>
+              </div>
+            </div>
+            <div className="landing-proposal">
+              <div>
+                <small>EXACT PAYMENT PROPOSAL</small>
+                <strong>¥42,000</strong>
+              </div>
+              <div className="landing-route-mini">
+                <span>USD</span><ArrowRight size={12}/><span>USDG</span><ArrowRight size={12}/><span>CNY</span>
+              </div>
+              <button onClick={() => openApp()}>Review before approval <ArrowRight size={14}/></button>
+            </div>
+          </div>
+        </section>
+
+        <section className="landing-strip" aria-label="33JACK capabilities">
+          <span>INVOICE INTELLIGENCE</span><i>•</i>
+          <span>RISK CONTROLS</span><i>•</i>
+          <span>VOICE PAY</span><i>•</i>
+          <span>SMART ROUTING</span><i>•</i>
+          <span>STABLECOIN SETTLEMENT</span><i>•</i>
+          <span>FIAT PAYOUTS</span><i>•</i>
+          <span>RECONCILIATION</span>
+        </section>
+
+        <section className="landing-section" id="product">
+          <div className="landing-section-head">
+            <div>
+              <span className="landing-eyebrow">ONE OPERATOR · THREE CORE PRODUCTS</span>
+              <h2>From obligation to outcome.</h2>
+            </div>
+            <p>33JACK combines invoice intelligence, stablecoin settlement and local-currency payout workflows behind one controlled agent.</p>
+          </div>
+
+          <div className="landing-product-grid">
+            <article className="landing-product-card featured">
+              <div className="landing-card-icon"><FilePlus2 size={21}/></div>
+              <span className="landing-eyebrow">33JACK INVOICE</span>
+              <h3>Understand the payment before touching the money.</h3>
+              <p>Extract invoice details, compare history, surface duplicates, beneficiary changes, suspicious signals and missing fields.</p>
+              <div className="landing-tags"><span>PDF</span><span>Images</span><span>Groq AI</span><span>Risk</span></div>
+              <button onClick={() => openApp("33Jack Invoice")}>Open Invoice <ArrowRight size={14}/></button>
+            </article>
+
+            <article className="landing-product-card">
+              <div className="landing-card-icon"><Coins size={21}/></div>
+              <span className="landing-eyebrow">33JACK CRYPTO</span>
+              <h3>Approved stablecoin settlement with on-chain proof.</h3>
+              <p>Move approved USDG on Solana Devnet through a server-controlled settlement path with exact approval binding.</p>
+              <div className="landing-tags"><span>USDG</span><span>Solana</span><span>Devnet live</span></div>
+              <button onClick={() => openApp("33Jack Crypto")}>Open Crypto <ArrowRight size={14}/></button>
+            </article>
+
+            <article className="landing-product-card">
+              <div className="landing-card-icon"><Landmark size={21}/></div>
+              <span className="landing-eyebrow">33JACK PAY</span>
+              <h3>Stablecoin-funded local payouts.</h3>
+              <p>Prepare FX and payout quotes, create sandbox transfers, track provider state and reconcile the final result.</p>
+              <div className="landing-tags"><span>Wise Sandbox</span><span>USD</span><span>GBP</span><span>CNY</span><span>INR</span></div>
+              <button onClick={() => openApp("33Jack Pay")}>Open Pay <ArrowRight size={14}/></button>
+            </article>
+          </div>
+        </section>
+
+        <section className="landing-section landing-how" id="how">
+          <div className="landing-section-head">
+            <div>
+              <span className="landing-eyebrow">THE 33JACK LOOP</span>
+              <h2>Six steps. One controlled flow.</h2>
+            </div>
+            <p>AI handles preparation and explanation. Deterministic controls and explicit approval stay between the model and the money.</p>
+          </div>
+          <div className="landing-process">
+            {steps.map(([title, body, Icon], i) => (
+              <div className="landing-process-step" key={title}>
+                <div className="landing-process-num">0{i + 1}</div>
+                <Icon size={20}/>
+                <h3>{title}</h3>
+                <p>{body}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="landing-section" id="channels">
+          <div className="landing-interface-grid">
+            <div className="landing-interface-copy">
+              <span className="landing-eyebrow">TALK TO YOUR FINANCE OPERATOR</span>
+              <h2>Type it. Send it. Say it.</h2>
+              <p>
+                33JACK does not need another finance dashboard to become useful. Give it the instruction where work already happens,
+                then hand sensitive execution into the controlled approval flow.
+              </p>
+              <div className="landing-interface-actions">
+                <button className="landing-primary" onClick={() => openApp("Channels")}>
+                  <MessageCircleMore size={16}/> Open Telegram channel
+                </button>
+                <button className="landing-secondary" onClick={() => openApp("Voice Pay β")}>
+                  <Mic size={16}/> Open Voice Pay
+                </button>
+              </div>
+            </div>
+
+            <div className="landing-chat-stack">
+              <div className="landing-chat telegram">
+                <div className="landing-chat-head"><MessageCircleMore size={16}/><b>33JACK · Telegram</b><span>LIVE</span></div>
+                <div className="landing-chat-user">What payments need my attention?</div>
+                <div className="landing-chat-agent">
+                  <Bot size={15}/>
+                  <p><b>1 payment needs risk review.</b><br/>Shenzhen Nova Parts · CN-44018 · beneficiary details changed.</p>
+                </div>
+              </div>
+              <div className="landing-chat voice">
+                <div className="landing-voice-orb"><Mic size={21}/></div>
+                <div><small>VOICE PAY · LIVE TRANSCRIPTION</small><b>“Pay Jonathan Berger”</b><span>33JACK → How much?</span></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="landing-section" id="rails">
+          <div className="landing-section-head">
+            <div>
+              <span className="landing-eyebrow">33JACK SETTLEMENT NETWORK</span>
+              <h2>The instruction stays simple.<br/>The plumbing does not.</h2>
+            </div>
+            <p>33JACK turns a payment intent into eligible route options, scores them deterministically, and keeps simulated rails clearly separated from connected ones.</p>
+          </div>
+
+          <div className="landing-network">
+            <div className="landing-network-origin"><Sparkles size={20}/><b>PAYMENT INTENT</b><small>Amount · currency · recipient · policy</small></div>
+            <ArrowRight className="landing-network-arrow"/>
+            <div className="landing-network-router"><RefreshCw size={22}/><b>SMART ROUTER</b><small>Cost · FX · speed · reliability</small></div>
+            <ArrowRight className="landing-network-arrow"/>
+            <div className="landing-network-rails">
+              <div><span className="sol-symbol">S</span><b>Solana</b><small>Devnet live</small></div>
+              <div><Landmark size={18}/><b>Wise</b><small>Sandbox</small></div>
+              <div><Globe2 size={18}/><b>Base / Morph</b><small>Demo adapters</small></div>
+            </div>
+          </div>
+        </section>
+
+        <section className="landing-safety">
+          <div>
+            <span className="landing-eyebrow">THE BOUNDARY MATTERS</span>
+            <h2>AI prepares.<br/>Humans authorize.</h2>
+          </div>
+          <div className="landing-safety-points">
+            <p><ShieldCheck size={17}/><span><b>Exact approval binding</b>Amount, beneficiary and route are locked to the approval.</span></p>
+            <p><TriangleAlert size={17}/><span><b>Risk stops execution</b>Duplicates, suspicious invoices and beneficiary changes can block the flow.</span></p>
+            <p><BadgeCheck size={17}/><span><b>No fake production claims</b>Sandbox and Devnet rails stay visibly labelled until production partners are live.</span></p>
+          </div>
+        </section>
+
+        <section className="landing-final-cta">
+          <div className="landing-final-glow"/>
+          <span className="landing-eyebrow">33JACK</span>
+          <h2>Give the operator the invoice.<br/>Get back a controlled outcome.</h2>
+          <p>Invoice intelligence, risk, routing, approval, settlement and reconciliation — one workflow.</p>
+          <button className="landing-primary" onClick={() => openApp()}>
+            Launch the product <ArrowRight size={17}/>
+          </button>
+        </section>
+      </main>
+
+      <footer className="landing-footer">
+        <Logo/>
+        <p>AI-powered cross-border finance operations.</p>
+        <div><a href="/privacy-policy.html">Privacy</a><a href="/terms.html">Terms</a><span>Built on Solana</span></div>
+      </footer>
+    </div>
+  );
+}
+
 function App() {
-  const [active, setActive] = useState("Overview");
+  const [active, setActive] = useState(() => {
+    const requested = new URLSearchParams(window.location.search).get("view");
+    return nav.some(([label]) => label === requested) ? requested : "Overview";
+  });
   const [flow, setFlow] = useState(false);
   const [invoiceSeed, setInvoiceSeed] = useState(null);
   const [livePayments, setLivePayments] = useState([]);
@@ -2680,4 +2931,15 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")).render(<AppErrorBoundary><App/></AppErrorBoundary>);
+function Root() {
+  const params = new URLSearchParams(window.location.search);
+  const hasExternalReview = Boolean(
+    params.get("channel") &&
+    params.get("paymentId") &&
+    (params.get("waToken") || params.get("wxToken"))
+  );
+  const showApp = window.location.pathname.startsWith("/app") || hasExternalReview;
+  return showApp ? <App/> : <HomePage/>;
+}
+
+createRoot(document.getElementById("root")).render(<AppErrorBoundary><Root/></AppErrorBoundary>);
