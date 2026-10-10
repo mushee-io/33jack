@@ -47,6 +47,10 @@
     {
       "source": "/api/beneficiaries",
       "destination": "/api/payments?kind=beneficiaries&limit=100"
+    },
+    {
+      "source": "/app",
+      "destination": "/index.html"
     }
   ]
 }
