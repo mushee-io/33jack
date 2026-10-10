@@ -2461,6 +2461,25 @@ function HomePage() {
               <span><CheckCircle2 size={14}/> Solana Devnet live</span>
               <span><CheckCircle2 size={14}/> Wise Sandbox connected</span>
             </div>
+            <div className="landing-channel-row" aria-label="33JACK messaging channels">
+              <span className="landing-channel-label">USE 33JACK ON</span>
+              <button type="button" className="landing-channel-pill live" onClick={() => openApp("Channels")} aria-label="Open 33JACK on Telegram">
+                <span className="landing-channel-logo telegram"><img src="https://cdn.simpleicons.org/telegram/FFFFFF" alt="" /></span>
+                <span><b>Telegram</b><small><i/> Live</small></span>
+              </button>
+              <div className="landing-channel-pill">
+                <span className="landing-channel-logo whatsapp"><img src="https://cdn.simpleicons.org/whatsapp/FFFFFF" alt="" /></span>
+                <span><b>WhatsApp</b><small><i/> Soon</small></span>
+              </div>
+              <div className="landing-channel-pill">
+                <span className="landing-channel-logo wechat"><img src="https://cdn.simpleicons.org/wechat/FFFFFF" alt="" /></span>
+                <span><b>WeChat</b><small><i/> Soon</small></span>
+              </div>
+              <div className="landing-channel-pill">
+                <span className="landing-channel-logo snapchat"><img src="https://cdn.simpleicons.org/snapchat/000000" alt="" /></span>
+                <span><b>Snapchat</b><small><i/> Soon</small></span>
+              </div>
+            </div>
           </div>
 
           <div className="landing-console">
@@ -2501,64 +2520,6 @@ function HomePage() {
                 <span>USD</span><ArrowRight size={12}/><span>USDG</span><ArrowRight size={12}/><span>CNY</span>
               </div>
               <button onClick={() => openApp()}>Review before approval <ArrowRight size={14}/></button>
-            </div>
-          </div>
-        </section>
-
-        <section className="landing-channels" aria-labelledby="landing-channels-title">
-          <div className="landing-channels-head">
-            <div>
-              <span className="landing-eyebrow">33JACK · EVERYWHERE YOU WORK</span>
-              <h2 id="landing-channels-title">Use 33JACK on</h2>
-            </div>
-            <p>Start on Telegram today. More messaging surfaces are coming next.</p>
-          </div>
-
-          <div className="landing-channel-grid">
-            <button
-              type="button"
-              className="landing-channel-card is-live"
-              onClick={() => openApp("Channels")}
-              aria-label="Open 33JACK on Telegram"
-            >
-              <span className="landing-channel-logo telegram">
-                <img src="https://cdn.simpleicons.org/telegram/FFFFFF" alt="" />
-              </span>
-              <span className="landing-channel-copy">
-                <b>Telegram</b>
-                <small className="landing-channel-status live"><i/> Live</small>
-              </span>
-              <ArrowRight size={15}/>
-            </button>
-
-            <div className="landing-channel-card" aria-label="WhatsApp coming soon">
-              <span className="landing-channel-logo whatsapp">
-                <img src="https://cdn.simpleicons.org/whatsapp/FFFFFF" alt="" />
-              </span>
-              <span className="landing-channel-copy">
-                <b>WhatsApp</b>
-                <small className="landing-channel-status"><i/> Coming soon</small>
-              </span>
-            </div>
-
-            <div className="landing-channel-card" aria-label="WeChat coming soon">
-              <span className="landing-channel-logo wechat">
-                <img src="https://cdn.simpleicons.org/wechat/FFFFFF" alt="" />
-              </span>
-              <span className="landing-channel-copy">
-                <b>WeChat</b>
-                <small className="landing-channel-status"><i/> Coming soon</small>
-              </span>
-            </div>
-
-            <div className="landing-channel-card" aria-label="Snapchat coming soon">
-              <span className="landing-channel-logo snapchat">
-                <img src="https://cdn.simpleicons.org/snapchat/000000" alt="" />
-              </span>
-              <span className="landing-channel-copy">
-                <b>Snapchat</b>
-                <small className="landing-channel-status"><i/> Coming soon</small>
-              </span>
             </div>
           </div>
         </section>
