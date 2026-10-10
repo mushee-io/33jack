@@ -10,6 +10,7 @@ import {
   Check,
   CheckCircle2,
   ChevronRight,
+  ChevronUp,
   CircleDollarSign,
   Clock3,
   FileCheck2,
@@ -2684,6 +2685,7 @@ function HomePage() {
 }
 
 function App() {
+  const [menuOpen, setMenuOpen] = useState(false);
   const [active, setActive] = useState(() => {
     const requested = new URLSearchParams(window.location.search).get("view");
     return nav.some(([label]) => label === requested) ? requested : "Overview";
@@ -2790,35 +2792,40 @@ function App() {
   const flaggedCount = livePayments.filter((p) => p.risk?.duplicate || p.risk?.beneficiary_changed || p.risk?.suspicious).length;
 
   return (
-    <div className="app">
-      <aside>
-        <Logo/>
-        <nav>
-          {nav.map(([label, Icon]) => (
-            <button key={label} className={active === label ? "active" : ""} onClick={() => setActive(label)}>
-              <Icon size={18}/><span>{label}</span>
+    <div className={"app alwayzz-app" + (menuOpen ? " menu-open" : "")}>
+      <div className="app-topnav-wrap">
+        <div className="app-topnav">
+          <button className="app-wordmark" type="button" onClick={() => { setActive("Overview"); setMenuOpen(false); }}>
+            <span>33jack</span><sup>®</sup>
+          </button>
+          <button className={"app-menu-pill" + (menuOpen ? " open" : "")} type="button" onClick={() => setMenuOpen((v) => !v)}>
+            Menu <ChevronUp size={16}/>
+          </button>
+        </div>
+      </div>
+
+      <div className={"app-drawer" + (menuOpen ? " open" : "")} aria-hidden={!menuOpen}>
+        <div className="app-drawer-links">
+          {nav.map(([label]) => (
+            <button
+              type="button"
+              key={label}
+              className={active === label ? "active" : ""}
+              onClick={() => { setActive(label); setMenuOpen(false); }}
+            >
+              {label}
             </button>
           ))}
-        </nav>
-        <div className="side-agent">
-          <div className="mini-orb"><Sparkles size={15}/></div>
-          <b>33jack Agent</b>
-          <p>Ready to prepare payments and investigate exceptions.</p>
-          <button onClick={() => setFlow(true)}>Ask agent</button>
         </div>
-        <div className="profile"><div>IN</div><span><b>Mushee Labs</b><small>Business workspace</small></span></div>
-      </aside>
+        <div className="app-drawer-footer">
+          <span>33JACK · Mushee Labs</span>
+          <button type="button" onClick={() => { setMenuOpen(false); setFlow(true); }}>
+            New payment <ArrowRight size={16}/>
+          </button>
+        </div>
+      </div>
 
-      <main>
-        <header>
-          <div className="search"><Search size={16}/><input placeholder="Search invoices, suppliers, payments…"/></div>
-          <div className="header-actions">
-            <span className="network-dot">● Solana</span>
-            <button className="secondary" onClick={() => setActive("Channels")}><MessageCircleMore size={17}/> Channels</button>
-            <button className="primary" onClick={() => setFlow(true)}><Plus size={17}/> New payment</button>
-          </div>
-        </header>
-
+      <main className="app-main">
         <div className="content">
           {externalReviewError && (
             <div style={{marginBottom:16,padding:"12px 14px",border:"1px solid rgba(255,111,125,.25)",borderRadius:12,color:"#ff8994",fontSize:12}}>
@@ -2826,22 +2833,55 @@ function App() {
             </div>
           )}
           {active === "Overview" ? <>
-          <section className="hero">
-            <div>
-              <span className="eyebrow">AUTONOMOUS FINANCE OPERATOR</span>
-              <h1>Move business forward.<br/><em>33jack handles the money work.</em></h1>
-              <p>Verify invoices, catch risk, prepare the best cross-border route, execute with approval and reconcile automatically.</p>
-              <div className="hero-actions">
-                <button className="primary big" onClick={() => setFlow(true)}><Sparkles size={18}/> Run payment demo</button>
-                <span><ShieldCheck size={16}/> Human-approved execution</span>
+          <section className="hero app-interior-hero">
+            <div className="hero-lines hero-lines-left" aria-hidden="true">
+              {Array.from({ length: 20 }).map((_, i) => <i key={"l" + i} style={{ width: 60 + i * 10, animationDelay: i * .25 + "s" }}/>)}
+            </div>
+            <div className="hero-lines hero-lines-right" aria-hidden="true">
+              {Array.from({ length: 20 }).map((_, i) => <i key={"r" + i} style={{ width: 60 + i * 10, animationDelay: i * .25 + "s" }}/>)}
+            </div>
+            <div className="hero-lines hero-lines-top" aria-hidden="true">
+              {Array.from({ length: 20 }).map((_, i) => <i key={"t" + i} style={{ width: 60 + i * 10, animationDelay: i * .25 + "s" }}/>)}
+            </div>
+
+            <div className="app-hero-content">
+              <div className="app-ticker" aria-label="33JACK capabilities">
+                <div className="app-ticker-track">
+                  {Array.from({ length: 4 }).flatMap((_, repeat) =>
+                    ["Invoice Intelligence", "Cross-border Pay", "Voice Pay", "Stablecoin Settlement", "Reconciliation"].map((item) => (
+                      <span key={repeat + item}>{item}</span>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <h1>Finance work, <span className="serif-italic">33jack</span><sup>®</sup> on demand.</h1>
+              <p>
+                One AI finance operator for invoices, risk, routing, approvals, stablecoin settlement,
+                local payouts and reconciliation — on your timeline.
+              </p>
+
+              <div className="app-hero-cta">
+                <button className="app-primary-pill" type="button" onClick={() => setFlow(true)}>New payment</button>
+                <button className="app-chat-pill" type="button" onClick={() => setActive("Agent")}>
+                  <img src="https://framerusercontent.com/images/hfneFL6CHBi5BnNvCeOaqU9HqE4.png" alt="" />
+                  <span><b>Ask 33JACK</b><small><i/> Ready now</small></span>
+                </button>
               </div>
             </div>
-            <div className="hero-orbit">
-              <div className="orbit-core"><span>33</span><small>AI OPERATOR</small></div>
-              <div className="orbit-label a">INVOICE</div>
-              <div className="orbit-label b">USDG</div>
-              <div className="orbit-label c">SOLANA</div>
-              <div className="orbit-label d">LOCAL PAYOUT</div>
+            <div className="app-progressive-blur" aria-hidden="true"/>
+          </section>
+
+          <section className="app-trusted">
+            <p>Built across the rails and infrastructure 33JACK uses today.</p>
+            <div className="app-trusted-marquee">
+              <div className="app-trusted-track">
+                {Array.from({ length: 4 }).flatMap((_, repeat) =>
+                  ["Solana", "Wise", "USDG", "Telegram", "Groq", "Neon", "Vercel", "Banks", "Wallets", "Global payouts"].map((item, i) => (
+                    <span key={repeat + item} className={"logo-type logo-" + (i % 5)}>{item}</span>
+                  ))
+                )}
+              </div>
             </div>
           </section>
 
