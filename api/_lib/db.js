@@ -328,6 +328,45 @@ export async function listPayments(limit = 25) {
   return client`select * from jack_payments order by created_at desc limit ${limit}`;
 }
 
+export async function deleteAuditEventsByPaymentIds(ids = []) {
+  const normalized = [...new Set((ids || []).filter(Boolean).map((id) => String(id)))];
+  if (!normalized.length) return 0;
+
+  const client = db();
+  if (!client) {
+    const before = memory.events.length;
+    memory.events = memory.events.filter((event) => !normalized.includes(String(event.payment_id || "")));
+    return before - memory.events.length;
+  }
+
+  await ensureSchema();
+  const rows = await client`
+    delete from jack_events
+    where payment_id = any(${normalized}::text[])
+    returning id
+  `;
+  return rows.length;
+}
+
+export async function deletePayment(id) {
+  const value = String(id || "").trim();
+  if (!value) return null;
+
+  const client = db();
+  if (!client) {
+    const index = memory.payments.findIndex((payment) => String(payment.id) === value);
+    if (index < 0) return null;
+    const [removed] = memory.payments.splice(index, 1);
+    memory.events = memory.events.filter((event) => String(event.payment_id || "") !== value);
+    return removed;
+  }
+
+  await ensureSchema();
+  await client`delete from jack_events where payment_id = ${value}`;
+  const rows = await client`delete from jack_payments where id = ${value} returning *`;
+  return rows[0] || null;
+}
+
 
 export async function listPaymentsByWorkspace(workspaceId, limit = 100) {
   if (!workspaceId) return [];
@@ -422,6 +461,27 @@ export async function claimChannelMessage(channel, messageId) {
     returning message_id
   `;
   return rows.length === 1;
+}
+
+export async function deleteBeneficiary(id) {
+  const numericId = Number(id);
+  if (!Number.isFinite(numericId)) return null;
+
+  const client = db();
+  if (!client) {
+    const index = memory.beneficiaries.findIndex((beneficiary) => Number(beneficiary.id) === numericId);
+    if (index < 0) return null;
+    const [removed] = memory.beneficiaries.splice(index, 1);
+    return removed;
+  }
+
+  await ensureSchema();
+  const rows = await client`
+    delete from jack_beneficiaries
+    where id = ${numericId}
+    returning *
+  `;
+  return rows[0] || null;
 }
 
 export async function getBeneficiaryHistory(supplier, destinationCurrency) {
