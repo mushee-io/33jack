@@ -2712,7 +2712,6 @@ function HomePage() {
 }
 
 function App() {
-  const [menuOpen, setMenuOpen] = useState(false);
   const [active, setActive] = useState(() => viewFromLocation());
   const [flow, setFlow] = useState(false);
   const [invoiceSeed, setInvoiceSeed] = useState(null);
@@ -2729,14 +2728,12 @@ function App() {
       window.history[options.replace ? "replaceState" : "pushState"]({}, "", target);
     }
     setActive(nextView);
-    setMenuOpen(false);
     window.scrollTo({ top: 0, behavior: options.instant ? "auto" : "smooth" });
   }
 
   useEffect(() => {
     const onPopState = () => {
       setActive(viewFromLocation());
-      setMenuOpen(false);
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -2837,36 +2834,35 @@ function App() {
   const flaggedCount = livePayments.filter((p) => p.risk?.duplicate || p.risk?.beneficiary_changed || p.risk?.suspicious).length;
 
   return (
-    <div className={"app alwayzz-app" + (menuOpen ? " menu-open" : "")}>
+    <div className="app alwayzz-app">
       <div className="app-topnav-wrap">
         <div className="app-topnav">
           <button className="app-wordmark" type="button" onClick={() => navigateTo("Overview")}>
             <span>33jack</span><sup>®</sup>
           </button>
-          <button className={"app-menu-pill" + (menuOpen ? " open" : "")} type="button" onClick={() => setMenuOpen((v) => !v)}>
-            Menu <ChevronUp size={16}/>
-          </button>
-        </div>
-      </div>
-
-      <div className={"app-drawer" + (menuOpen ? " open" : "")} aria-hidden={!menuOpen}>
-        <div className="app-drawer-links">
-          {nav.map(([label]) => (
-            <button
-              type="button"
-              key={label}
-              className={active === label ? "active" : ""}
-              onClick={() => navigateTo(label)}
-            >
-              {label}
+          <div className="app-topnav-actions">
+            <span className="app-route-label">{active}</span>
+            <button className="app-new-payment" type="button" onClick={() => setFlow(true)}>
+              <Plus size={15}/> New payment
             </button>
-          ))}
+          </div>
         </div>
-        <div className="app-drawer-footer">
-          <span>33JACK · Mushee Labs</span>
-          <button type="button" onClick={() => { setMenuOpen(false); setFlow(true); }}>
-            New payment <ArrowRight size={16}/>
-          </button>
+
+        <div className="app-function-nav-shell">
+          <nav className="app-function-nav" aria-label="33JACK products">
+            {nav.map(([label, Icon]) => (
+              <button
+                type="button"
+                key={label}
+                className={active === label ? "active" : ""}
+                onClick={() => navigateTo(label)}
+                aria-current={active === label ? "page" : undefined}
+              >
+                <Icon size={14}/>
+                <span>{label}</span>
+              </button>
+            ))}
+          </nav>
         </div>
       </div>
 
