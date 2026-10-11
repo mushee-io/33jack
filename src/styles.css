@@ -2726,3 +2726,54 @@ button.jack-home-channel{
   .jack-home-coming-soon{font-size:8px}
   .jack-home-channel{width:25px;height:25px}
 }
+
+
+/* Live record deletion */
+.records-head-actions,
+.records-row:has(.record-delete){
+  grid-template-columns:1.35fr .65fr .55fr 1.15fr auto;
+}
+.record-delete{
+  min-width:74px;
+  height:34px;
+  padding:0 10px;
+  border:1px solid rgba(190,35,55,.14);
+  border-radius:999px;
+  background:rgba(190,35,55,.035);
+  color:#b5293a;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  font:600 11px/1 Inter,ui-sans-serif,sans-serif;
+  cursor:pointer;
+  transition:background .18s ease,border-color .18s ease,transform .18s ease;
+}
+.record-delete:hover:not(:disabled){
+  background:rgba(190,35,55,.075);
+  border-color:rgba(190,35,55,.25);
+  transform:translateY(-1px);
+}
+.record-delete:disabled{
+  opacity:.45;
+  cursor:wait;
+}
+.alwayzz-app .record-delete{
+  background:#fff;
+  border-color:rgba(185,37,54,.14);
+  color:#b92536;
+}
+.alwayzz-app .record-delete:hover:not(:disabled){
+  background:rgba(185,37,54,.045);
+  border-color:rgba(185,37,54,.24);
+}
+.payout-history-row:has(.record-delete){
+  grid-template-columns:1.4fr .8fr .8fr .7fr auto;
+}
+@media(max-width:760px){
+  .records-head-actions,
+  .records-row:has(.record-delete),
+  .payout-history-row:has(.record-delete){
+    min-width:820px;
+  }
+}
