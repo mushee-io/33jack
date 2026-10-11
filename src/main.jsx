@@ -2598,9 +2598,29 @@ function HomePage() {
         </div>
 
         <div className="jack-home-bottom">
-          <button className="jack-home-cta jack-anim-fade-up" style={{animationDelay:"900ms"}} onClick={() => openApp()}>
-            <span>✦</span><b>OPEN 33JACK</b>
-          </button>
+          <div className="jack-home-bottom-left">
+            <button className="jack-home-cta jack-anim-fade-up" style={{animationDelay:"900ms"}} onClick={() => openApp()}>
+              <span>✦</span><b>OPEN 33JACK</b>
+            </button>
+
+            <div className="jack-home-channels jack-anim-fade-up" style={{animationDelay:"1050ms"}} aria-label="33JACK messaging channels">
+              <span className="jack-home-channels-label">USE 33JACK ON</span>
+              <button type="button" className="jack-home-channel is-live" onClick={() => openApp("Channels")} title="Telegram — Live" aria-label="Telegram — Live">
+                <img src="https://cdn.simpleicons.org/telegram/FFFFFF" alt="Telegram"/>
+                <i/>
+              </button>
+              <span className="jack-home-channel" title="WhatsApp — Coming soon" aria-label="WhatsApp — Coming soon">
+                <img src="https://cdn.simpleicons.org/whatsapp/FFFFFF" alt="WhatsApp"/>
+              </span>
+              <span className="jack-home-channel" title="WeChat — Coming soon" aria-label="WeChat — Coming soon">
+                <img src="https://cdn.simpleicons.org/wechat/FFFFFF" alt="WeChat"/>
+              </span>
+              <span className="jack-home-channel snapchat" title="Snapchat — Coming soon" aria-label="Snapchat — Coming soon">
+                <img src="https://cdn.simpleicons.org/snapchat/FFFFFF" alt="Snapchat"/>
+              </span>
+              <span className="jack-home-coming-soon">3 COMING SOON</span>
+            </div>
+          </div>
 
           <div className="jack-home-info jack-anim-slide-right" style={{animationDelay:"1100ms"}}>
             <span className="jack-home-info-badge">AI FINANCE OPERATOR — NOT A BANK</span>
