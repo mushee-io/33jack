@@ -31,6 +31,7 @@ import {
   ShieldCheck,
   Sparkles,
   TriangleAlert,
+  Trash2,
   UploadCloud,
   Wallet,
   WalletCards,
@@ -174,6 +175,45 @@ async function readApiResponse(response) {
       detail: text || `HTTP ${response.status}`
     };
   }
+}
+
+async function deleteStoredRecord(kind, id, label = "this record") {
+  if (!id) return { deleted: false, cancelled: true };
+
+  const confirmed = window.confirm(
+    `Permanently delete ${label} from 33JACK live storage? This removes the stored record from Neon and cannot be undone.`
+  );
+  if (!confirmed) return { deleted: false, cancelled: true };
+
+  const storageKey = "33jack.recordDeleteSecret";
+  let secret = window.sessionStorage.getItem(storageKey) || "";
+  if (!secret) {
+    secret = window.prompt("Enter the 33JACK record delete key.") || "";
+    if (!secret) return { deleted: false, cancelled: true };
+  }
+
+  const response = await fetch("/api/payments", {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+      "X-33Jack-Delete-Secret": secret
+    },
+    body: JSON.stringify({ kind, id })
+  });
+  const data = await readApiResponse(response);
+
+  if (response.status === 401) {
+    window.sessionStorage.removeItem(storageKey);
+    window.alert("That delete key is not valid.");
+    return { deleted: false, error: "invalid_key" };
+  }
+  if (!response.ok) {
+    window.alert(data.detail || data.error || "Could not delete the record.");
+    return { deleted: false, error: data.error || "delete_failed" };
+  }
+
+  window.sessionStorage.setItem(storageKey, secret);
+  return data;
 }
 
 const STABLECOINS = new Set(["USDG", "USDC", "USDT"]);
@@ -1044,6 +1084,7 @@ function PayWorkspace({ seed }) {
   const [historySearch, setHistorySearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [trackingBusy, setTrackingBusy] = useState(false);
+  const [deletingPayoutId, setDeletingPayoutId] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -1215,6 +1256,27 @@ function PayWorkspace({ seed }) {
     ].filter(Boolean).join(" ").toLowerCase();
     return haystack.includes(historySearch.trim().toLowerCase());
   });
+
+  async function removePayoutRecord(payout) {
+    if (!payout?.id || deletingPayoutId) return;
+    setDeletingPayoutId(String(payout.id));
+    try {
+      const result = await deleteStoredRecord(
+        "payout",
+        payout.id,
+        `${payout.invoice_ref || payout.id} payout record`
+      );
+      if (result?.deleted) {
+        setHistory((current) => current.filter((item) => String(item.id) !== String(payout.id)));
+        if (String(quote?.id || "") === String(payout.id)) {
+          setQuote(null);
+          setReceipt(null);
+        }
+      }
+    } finally {
+      setDeletingPayoutId("");
+    }
+  }
 
   function exportPayoutCsv() {
     const rows = filteredHistory.map((p) => {
@@ -1401,6 +1463,15 @@ function PayWorkspace({ seed }) {
                 {String(p.status || "").replaceAll("_", " ")}
                 {p.quote?.providerTransferId ? <small> · #{p.quote.providerTransferId}</small> : null}
               </span>
+              <button
+                type="button"
+                className="record-delete"
+                onClick={() => removePayoutRecord(p)}
+                disabled={deletingPayoutId === String(p.id)}
+                aria-label={`Delete payout ${p.invoice_ref || p.id}`}
+              >
+                <Trash2 size={14}/><span>{deletingPayoutId === String(p.id) ? "Deleting…" : "Delete"}</span>
+              </button>
             </div>
           );
         }) : <div className="empty-records">No fiat payout simulations yet.</div>}
@@ -2388,8 +2459,9 @@ function AgentWorkspace({ onNewPayment }) {
   );
 }
 
-function RecordsWorkspace({ type, payments, onNewPayment }) {
+function RecordsWorkspace({ type, payments, onNewPayment, onRecordDeleted }) {
   const [beneficiaries, setBeneficiaries] = useState([]);
+  const [deletingId, setDeletingId] = useState("");
 
   useEffect(() => {
     if (type !== "Beneficiaries") return;
@@ -2399,6 +2471,40 @@ function RecordsWorkspace({ type, payments, onNewPayment }) {
       .catch(() => setBeneficiaries([]));
   }, [type]);
 
+  async function removeBeneficiaryRecord(record) {
+    const id = record?.id;
+    if (!id || deletingId) return;
+    setDeletingId(String(id));
+    try {
+      const result = await deleteStoredRecord(
+        "beneficiary",
+        id,
+        `${record.supplier_name || "beneficiary"} beneficiary record`
+      );
+      if (result?.deleted) {
+        setBeneficiaries((current) => current.filter((item) => String(item.id) !== String(id)));
+      }
+    } finally {
+      setDeletingId("");
+    }
+  }
+
+  async function removePaymentRecord(record) {
+    const id = record?.id;
+    if (!id || deletingId) return;
+    setDeletingId(String(id));
+    try {
+      const result = await deleteStoredRecord(
+        "payment",
+        id,
+        `${record.supplier || record.invoice_number || "payment"} record`
+      );
+      if (result?.deleted) onRecordDeleted?.(id);
+    } finally {
+      setDeletingId("");
+    }
+  }
+
   if (type === "Beneficiaries") {
     return (
       <section className="workspace-page">
@@ -2407,13 +2513,22 @@ function RecordsWorkspace({ type, payments, onNewPayment }) {
           <p>Profiles are created after successful settlement and only retain limited payout fingerprints such as bank name and last four characters.</p>
         </div>
         <div className="card records-card">
-          <div className="records-head"><span>Supplier</span><span>Currency</span><span>Bank / Handle</span><span>Last seen</span></div>
+          <div className="records-head records-head-actions"><span>Supplier</span><span>Currency</span><span>Bank / Handle</span><span>Last seen</span><span>Delete</span></div>
           {beneficiaries.length ? beneficiaries.map((b) => (
             <div className="records-row" key={b.id || b.supplier_name + b.destination_currency}>
               <span><b>{b.supplier_name}</b><small>{b.country || "—"}</small></span>
               <span>{b.destination_currency || "—"}</span>
               <span>{b.bank_name || b.payment_handle || "—"}{b.account_last4 ? " · ••••" + b.account_last4 : ""}</span>
               <span>{b.last_seen_at ? new Date(b.last_seen_at).toLocaleString() : "—"}</span>
+              <button
+                type="button"
+                className="record-delete"
+                onClick={() => removeBeneficiaryRecord(b)}
+                disabled={deletingId === String(b.id)}
+                aria-label={`Delete ${b.supplier_name || "beneficiary"}`}
+              >
+                <Trash2 size={14}/><span>{deletingId === String(b.id) ? "Deleting…" : "Delete"}</span>
+              </button>
             </div>
           )) : <div className="empty-records">No verified beneficiary history yet.</div>}
         </div>
@@ -2435,13 +2550,22 @@ function RecordsWorkspace({ type, payments, onNewPayment }) {
         <button className="primary" onClick={onNewPayment}><Plus size={16}/> New payment</button>
       </div>
       <div className="card records-card">
-        <div className="records-head"><span>Supplier / Invoice</span><span>Amount</span><span>Status</span><span>Route</span></div>
+        <div className="records-head records-head-actions"><span>Supplier / Invoice</span><span>Amount</span><span>Status</span><span>Route</span><span>Delete</span></div>
         {filtered.length ? filtered.map((p) => (
           <div className="records-row" key={p.id}>
             <span><b>{p.supplier || "Unknown supplier"}</b><small>{p.invoice_number || p.invoice_name || p.id}</small></span>
             <span>{p.source_amount && p.source_currency ? formatMoney(p.source_amount, p.source_currency) : p.destination_amount || "—"}</span>
             <span className="status-raw">{String(p.status || "unknown").replaceAll("_", " ")}</span>
             <span>{p.route || "Route pending"}</span>
+            <button
+              type="button"
+              className="record-delete"
+              onClick={() => removePaymentRecord(p)}
+              disabled={deletingId === String(p.id)}
+              aria-label={`Delete ${p.invoice_number || p.invoice_name || p.id}`}
+            >
+              <Trash2 size={14}/><span>{deletingId === String(p.id) ? "Deleting…" : "Delete"}</span>
+            </button>
           </div>
         )) : <div className="empty-records">No records in this view yet.</div>}
       </div>
@@ -2665,6 +2789,11 @@ function App() {
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
+
+  function handleRecordDeleted(id) {
+    setLivePayments((current) => current.filter((payment) => String(payment.id) !== String(id)));
+    if (String(invoiceSeed?.id || "") === String(id)) setInvoiceSeed(null);
+  }
 
   async function refreshPayments() {
     try {
@@ -2939,7 +3068,12 @@ function App() {
           ) : active === "Settlement Network" ? (
             <SettlementNetworkWorkspace/>
           ) : (
-            <RecordsWorkspace type={active} payments={livePayments} onNewPayment={() => setFlow(true)}/>
+            <RecordsWorkspace
+              type={active}
+              payments={livePayments}
+              onNewPayment={() => setFlow(true)}
+              onRecordDeleted={handleRecordDeleted}
+            />
           )}
         </div>
       </main>
