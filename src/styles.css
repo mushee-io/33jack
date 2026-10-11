@@ -2653,3 +2653,76 @@ button.landing-channel-pill{
   .jack-home-info{transform:scale(.88);transform-origin:bottom right}
   .jack-node-square{width:76px;height:76px}
 }
+
+
+/* Compact homepage channel availability */
+.jack-home-bottom-left{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  gap:12px;
+}
+.jack-home-channels{
+  display:flex;
+  align-items:center;
+  gap:7px;
+  min-height:30px;
+}
+.jack-home-channels-label,
+.jack-home-coming-soon{
+  color:rgba(255,255,255,.58);
+  font-family:Manrope,sans-serif;
+  font-size:10px;
+  line-height:1;
+  letter-spacing:.08em;
+  white-space:nowrap;
+}
+.jack-home-channel{
+  position:relative;
+  width:27px;
+  height:27px;
+  padding:0;
+  border:1px solid rgba(255,255,255,.16);
+  border-radius:50%;
+  background:rgba(0,0,0,.22);
+  display:grid;
+  place-items:center;
+  opacity:.66;
+}
+button.jack-home-channel{
+  cursor:pointer;
+  font:inherit;
+}
+.jack-home-channel.is-live{
+  opacity:1;
+  border-color:rgba(175,221,255,.6);
+  background:rgba(175,221,255,.08);
+}
+.jack-home-channel img{
+  display:block;
+  width:13px;
+  height:13px;
+  object-fit:contain;
+}
+.jack-home-channel.is-live i{
+  position:absolute;
+  right:-1px;
+  bottom:-1px;
+  width:7px;
+  height:7px;
+  border:1px solid #000;
+  border-radius:50%;
+  background:#17c964;
+}
+.jack-home-coming-soon{
+  margin-left:3px;
+  font-size:9px;
+}
+
+@media(max-width:639px){
+  .jack-home-bottom-left{gap:10px}
+  .jack-home-channels{gap:6px}
+  .jack-home-channels-label{display:none}
+  .jack-home-coming-soon{font-size:8px}
+  .jack-home-channel{width:25px;height:25px}
+}
