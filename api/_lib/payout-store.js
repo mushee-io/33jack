@@ -201,3 +201,50 @@ export async function findPayoutByProviderTransferId(transferId) {
   `;
   return normalizePayout(rows[0] || null);
 }
+
+
+export async function deletePayout(id) {
+  const value = String(id || "").trim();
+  if (!value) return null;
+
+  const client = db();
+  if (!client) {
+    const index = memory.findIndex((row) => String(row.id) === value);
+    if (index < 0) return null;
+    const [removed] = memory.splice(index, 1);
+    return normalizePayout(removed);
+  }
+
+  await ensurePayoutSchema();
+  const rows = await client`
+    delete from jack_payouts
+    where id = ${value}
+    returning *
+  `;
+  return normalizePayout(rows[0] || null);
+}
+
+export async function deletePayoutsByInvoiceRefs(refs = []) {
+  const normalized = [...new Set((refs || []).filter(Boolean).map((value) => String(value).trim()).filter(Boolean))];
+  if (!normalized.length) return [];
+
+  const client = db();
+  if (!client) {
+    const removed = [];
+    for (let i = memory.length - 1; i >= 0; i -= 1) {
+      if (normalized.includes(String(memory[i]?.invoice_ref || ""))) {
+        removed.push(normalizePayout(memory[i]));
+        memory.splice(i, 1);
+      }
+    }
+    return removed;
+  }
+
+  await ensurePayoutSchema();
+  const rows = await client`
+    delete from jack_payouts
+    where invoice_ref = any(${normalized}::text[])
+    returning *
+  `;
+  return rows.map(normalizePayout);
+}
