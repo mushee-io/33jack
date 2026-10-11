@@ -1,5 +1,30 @@
-import { addAuditEvent, listBeneficiaries, listPayments, persistenceMode, savePayment } from "./_lib/db.js";
-import { listPayouts } from "./_lib/payout-store.js";
+import crypto from "node:crypto";
+import {
+  addAuditEvent,
+  deleteAuditEventsByPaymentIds,
+  deleteBeneficiary,
+  deletePayment,
+  getPayment,
+  listBeneficiaries,
+  listPayments,
+  persistenceMode,
+  savePayment
+} from "./_lib/db.js";
+import {
+  deletePayout,
+  deletePayoutsByInvoiceRefs,
+  listPayouts
+} from "./_lib/payout-store.js";
+
+function deleteAuthorized(req) {
+  const expected = String(process.env.RECORD_DELETE_SECRET || "");
+  const supplied = String(req.headers["x-33jack-delete-secret"] || "");
+  if (!expected || !supplied) return false;
+
+  const a = Buffer.from(expected);
+  const b = Buffer.from(supplied);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 
 export default async function handler(req, res) {
   if (req.method === "GET") {
@@ -32,6 +57,56 @@ export default async function handler(req, res) {
     return res.status(200).json({
       payments: rows,
       persistence: persistenceMode()
+    });
+  }
+
+
+  if (req.method === "DELETE") {
+    if (!process.env.RECORD_DELETE_SECRET) {
+      return res.status(503).json({
+        error: "Record deletion is not configured",
+        detail: "RECORD_DELETE_SECRET is missing."
+      });
+    }
+    if (!deleteAuthorized(req)) {
+      return res.status(401).json({ error: "Delete key is invalid" });
+    }
+
+    const body = req.body || {};
+    const kind = String(body.kind || "payment").trim().toLowerCase();
+    const id = String(body.id || "").trim();
+    if (!id) return res.status(400).json({ error: "Record id is required" });
+
+    if (kind === "beneficiary") {
+      const deleted = await deleteBeneficiary(id);
+      if (!deleted) return res.status(404).json({ error: "Beneficiary record not found" });
+      return res.status(200).json({ deleted: true, kind, id });
+    }
+
+    if (kind === "payout") {
+      const deleted = await deletePayout(id);
+      if (!deleted) return res.status(404).json({ error: "Payout record not found" });
+      await deleteAuditEventsByPaymentIds([id]);
+      return res.status(200).json({ deleted: true, kind, id });
+    }
+
+    if (kind !== "payment") {
+      return res.status(400).json({ error: "Unsupported record kind" });
+    }
+
+    const payment = await getPayment(id);
+    if (!payment) return res.status(404).json({ error: "Payment record not found" });
+
+    const refs = [payment.id, payment.invoice_number, payment.invoice_name].filter(Boolean);
+    const linkedPayouts = await deletePayoutsByInvoiceRefs(refs);
+    await deleteAuditEventsByPaymentIds(linkedPayouts.map((payout) => payout.id));
+    const deleted = await deletePayment(id);
+
+    return res.status(200).json({
+      deleted: Boolean(deleted),
+      kind,
+      id,
+      linkedPayoutsDeleted: linkedPayouts.length
     });
   }
 
@@ -123,5 +198,5 @@ export default async function handler(req, res) {
     return res.status(200).json({ payment: row });
   }
 
-  return res.status(405).json({ error: "GET or POST only" });
+  return res.status(405).json({ error: "GET, POST or DELETE only" });
 }
