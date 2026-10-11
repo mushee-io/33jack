@@ -58,6 +58,35 @@ const nav = [
   ["Approvals", ShieldCheck],
 ];
 
+const APP_ROUTES = {
+  "Overview": "/app",
+  "Agent": "/app/agent",
+  "Voice Pay β": "/app/voice-pay",
+  "Jack Swipe β": "/app/jack-swipe",
+  "Channels": "/app/channels",
+  "33Jack Pay": "/app/pay",
+  "33Jack Crypto": "/app/crypto",
+  "33Jack Invoice": "/app/invoice",
+  "Settlement Network": "/app/settlement-network",
+  "Payments": "/app/payments",
+  "Beneficiaries": "/app/beneficiaries",
+  "Approvals": "/app/approvals"
+};
+
+const PATH_TO_VIEW = Object.fromEntries(Object.entries(APP_ROUTES).map(([view, path]) => [path, view]));
+
+function viewFromLocation() {
+  const path = window.location.pathname.replace(/\/$/, "") || "/";
+  if (path === "/app/overview") return "Overview";
+  if (PATH_TO_VIEW[path]) return PATH_TO_VIEW[path];
+  const requested = new URLSearchParams(window.location.search).get("view");
+  return nav.some(([label]) => label === requested) ? requested : "Overview";
+}
+
+function appHref(view = "Overview") {
+  return APP_ROUTES[view] || APP_ROUTES.Overview;
+}
+
 const steps = [
   ["Invoice received", "AI extracted supplier, amount, due date and banking instructions.", FileText],
   ["Risk checks", "Duplicate scan, beneficiary-change check and missing-field validation.", ShieldCheck],
@@ -2419,10 +2448,8 @@ function RecordsWorkspace({ type, payments, onNewPayment }) {
 
 
 function HomePage() {
-  const openApp = (view = "") => {
-    window.location.href = view
-      ? `/app?view=${encodeURIComponent(view)}`
-      : "/app";
+  const openApp = (view = "Overview") => {
+    window.location.href = appHref(view);
   };
 
   return (
@@ -2686,16 +2713,34 @@ function HomePage() {
 
 function App() {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [active, setActive] = useState(() => {
-    const requested = new URLSearchParams(window.location.search).get("view");
-    return nav.some(([label]) => label === requested) ? requested : "Overview";
-  });
+  const [active, setActive] = useState(() => viewFromLocation());
   const [flow, setFlow] = useState(false);
   const [invoiceSeed, setInvoiceSeed] = useState(null);
   const [livePayments, setLivePayments] = useState([]);
   const [persistence, setPersistence] = useState("loading");
   const [externalReview, setExternalReview] = useState(null);
   const [externalReviewError, setExternalReviewError] = useState("");
+
+  function navigateTo(view, options = {}) {
+    const nextView = APP_ROUTES[view] ? view : "Overview";
+    const target = appHref(nextView);
+    const currentPath = window.location.pathname.replace(/\/$/, "") || "/";
+    if (currentPath !== target) {
+      window.history[options.replace ? "replaceState" : "pushState"]({}, "", target);
+    }
+    setActive(nextView);
+    setMenuOpen(false);
+    window.scrollTo({ top: 0, behavior: options.instant ? "auto" : "smooth" });
+  }
+
+  useEffect(() => {
+    const onPopState = () => {
+      setActive(viewFromLocation());
+      setMenuOpen(false);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   async function refreshPayments() {
     try {
@@ -2765,9 +2810,9 @@ function App() {
     setInvoiceSeed(invoice);
     const currency = String(invoice?.source_currency || invoice?.destination_currency || "").toUpperCase();
     if (["USDG", "USDC", "USDT"].includes(currency)) {
-      setActive("33Jack Crypto");
+      navigateTo("33Jack Crypto");
     } else {
-      setActive("33Jack Pay");
+      navigateTo("33Jack Pay");
     }
   }
 
@@ -2795,7 +2840,7 @@ function App() {
     <div className={"app alwayzz-app" + (menuOpen ? " menu-open" : "")}>
       <div className="app-topnav-wrap">
         <div className="app-topnav">
-          <button className="app-wordmark" type="button" onClick={() => { setActive("Overview"); setMenuOpen(false); }}>
+          <button className="app-wordmark" type="button" onClick={() => navigateTo("Overview")}>
             <span>33jack</span><sup>®</sup>
           </button>
           <button className={"app-menu-pill" + (menuOpen ? " open" : "")} type="button" onClick={() => setMenuOpen((v) => !v)}>
@@ -2811,7 +2856,7 @@ function App() {
               type="button"
               key={label}
               className={active === label ? "active" : ""}
-              onClick={() => { setActive(label); setMenuOpen(false); }}
+              onClick={() => navigateTo(label)}
             >
               {label}
             </button>
@@ -2863,7 +2908,7 @@ function App() {
 
               <div className="app-hero-cta">
                 <button className="app-primary-pill" type="button" onClick={() => setFlow(true)}>New payment</button>
-                <button className="app-chat-pill" type="button" onClick={() => setActive("Agent")}>
+                <button className="app-chat-pill" type="button" onClick={() => navigateTo("Agent")}>
                   <img src="https://framerusercontent.com/images/hfneFL6CHBi5BnNvCeOaqU9HqE4.png" alt="" />
                   <span><b>Ask 33JACK</b><small><i/> Ready now</small></span>
                 </button>
@@ -2885,7 +2930,7 @@ function App() {
             </div>
           </section>
 
-          <SubunitCards onOpen={setActive}/>
+          <SubunitCards onOpen={navigateTo}/>
 
           <section className="metrics">
             <Metric label="Payment records" value={livePayments.length || "—"} sub={livePayments.length ? `${persistence} persistence` : "No live records yet"}/>
@@ -2948,7 +2993,7 @@ function App() {
 
           <footer><Logo/><p>Autonomous cross-border finance for global businesses.</p><span>Colosseum build · Solana</span></footer>
           </> : active === "Agent" ? (
-            <AgentWorkspace/>
+            <AgentWorkspace onNewPayment={() => setFlow(true)}/>
           ) : active === "Voice Pay β" ? (
             <VoicePayWorkspace/>
           ) : active === "Jack Swipe β" ? (
