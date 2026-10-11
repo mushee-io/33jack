@@ -2029,3 +2029,142 @@ button.landing-channel-pill{
   70%{opacity:.4}
   100%{opacity:0;transform:translateX(-50%) scale(.85)}
 }
+
+
+/* ─────────────────────────────────────────────────────────────
+   33JACK APP NAVIGATION — each product is a real page.
+   Replaces the full-screen clustered drawer with persistent tabs.
+   ───────────────────────────────────────────────────────────── */
+.alwayzz-app .app-topnav-wrap{
+  background:rgba(255,255,255,.94);
+  border-bottom:1px solid rgba(0,0,0,.07);
+}
+.alwayzz-app .app-topnav{
+  height:70px;
+  padding:14px 36px;
+}
+.app-topnav-actions{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+.app-route-label{
+  color:#8a8a8a;
+  font-size:12px;
+  font-weight:500;
+  letter-spacing:-.02em;
+  white-space:nowrap;
+}
+.app-new-payment{
+  min-height:40px;
+  padding:0 17px;
+  border:0;
+  border-radius:999px;
+  background:#0a0a0a;
+  color:#fff;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  font:600 13px/1 Inter,ui-sans-serif,sans-serif;
+  letter-spacing:-.025em;
+  cursor:pointer;
+  transition:transform .2s ease,box-shadow .2s ease;
+}
+.app-new-payment:hover{
+  transform:translateY(-1px);
+  box-shadow:0 4px 18px rgba(0,0,0,.12);
+}
+.app-function-nav-shell{
+  width:100%;
+  border-top:1px solid rgba(0,0,0,.055);
+  background:rgba(255,255,255,.96);
+}
+.app-function-nav{
+  max-width:1200px;
+  height:50px;
+  margin:0 auto;
+  padding:7px 36px;
+  display:flex;
+  align-items:center;
+  gap:4px;
+  overflow-x:auto;
+  overflow-y:hidden;
+  scrollbar-width:none;
+  -ms-overflow-style:none;
+  -webkit-overflow-scrolling:touch;
+}
+.app-function-nav::-webkit-scrollbar{display:none}
+.app-function-nav button{
+  flex:0 0 auto;
+  height:35px;
+  padding:0 10px;
+  border:1px solid transparent;
+  border-radius:999px;
+  background:transparent;
+  color:#6f6f6f;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  font:500 12px/1 Inter,ui-sans-serif,sans-serif;
+  letter-spacing:-.025em;
+  white-space:nowrap;
+  cursor:pointer;
+  transition:background .18s ease,color .18s ease,border-color .18s ease,transform .18s ease;
+}
+.app-function-nav button:hover{
+  background:#f6f6f6;
+  color:#0a0a0a;
+}
+.app-function-nav button.active{
+  background:#0a0a0a;
+  color:#fff;
+  border-color:#0a0a0a;
+}
+.app-function-nav button svg{flex:0 0 auto}
+.alwayzz-app .workspace-page{margin-top:142px}
+
+/* Overview stays a page too, with enough breathing room below the fixed product nav. */
+.alwayzz-app .app-interior-hero{padding-top:190px}
+
+@media(max-width:1200px){
+  .alwayzz-app .app-topnav{padding-left:32px;padding-right:32px}
+  .app-function-nav{padding-left:32px;padding-right:32px}
+  .app-route-label{display:none}
+}
+
+@media(max-width:810px){
+  .alwayzz-app .app-topnav{
+    height:64px;
+    padding:12px 20px;
+  }
+  .app-wordmark span{font-size:27px}
+  .app-new-payment{
+    min-height:38px;
+    padding:0 14px;
+    font-size:12px;
+  }
+  .app-function-nav{
+    height:47px;
+    padding:6px 20px;
+    gap:3px;
+  }
+  .app-function-nav button{
+    height:34px;
+    padding:0 10px;
+    font-size:11.5px;
+  }
+  .alwayzz-app .workspace-page{
+    margin-top:126px;
+    padding:24px;
+    border-radius:20px;
+  }
+  .alwayzz-app .app-interior-hero{padding-top:154px}
+}
+
+@media(max-width:520px){
+  .app-new-payment svg{display:none}
+  .app-new-payment{padding:0 13px}
+  .app-function-nav button svg{display:none}
+}
