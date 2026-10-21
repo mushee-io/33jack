@@ -29,9 +29,16 @@
     },
     "api/settlement-network.js": {
       "maxDuration": 15
+    },
+    "api/celo-v2.js": {
+      "maxDuration": 20
     }
   },
   "rewrites": [
+    {
+      "source": "/v2",
+      "destination": "/v2.html"
+    },
     {
       "source": "/api/settlement-health",
       "destination": "/api/settlement-network?action=health"
