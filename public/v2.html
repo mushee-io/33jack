@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b1110"><meta name="description" content="33JACK V2 — Celo-native AI agent payment infrastructure.">
+<title>33JACK V2 — Celo Agent Infrastructure</title>
+<style>
+:root{color-scheme:dark;--bg:#0b1110;--ink:#f3fbf5;--sub:#a2b2ab;--green:#8df0a7;--stroke:#2c3c34;--card:#14201b}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 85% 0%,#163e30 0%,transparent 42%),var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif}
+a{color:inherit;text-decoration:none}header{max-width:1170px;margin:auto;display:flex;justify-content:space-between;align-items:center;padding:26px 24px;border-bottom:1px solid #ffffff18}
+.brand{font-weight:800;font-size:23px;letter-spacing:-1px}.brand strong{background:var(--green);color:#102119;border-radius:9px;padding:4px 7px;margin-right:5px}.brand small{font-size:11px;font-weight:650;color:var(--green);letter-spacing:2px;margin-left:8px}
+nav{display:flex;align-items:center;gap:20px;color:#b5c2b9;font-size:13px}nav a:hover{color:white}.pill{border:1px solid #51946966;padding:10px 14px;border-radius:999px;color:var(--green)}
+main{max-width:1170px;margin:0 auto;padding:56px 24px 96px}.eyebrow{display:inline-flex;gap:8px;align-items:center;font-size:12px;font-weight:700;letter-spacing:1.1px;color:var(--green);border:1px solid #2c5b3e;padding:8px 12px;border-radius:999px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 12px #8df0a780}
+h1{font-size:clamp(46px,7vw,84px);letter-spacing:-5px;line-height:1.04;max-width:840px;margin:28px 0}h1 em{font-style:normal;color:var(--green)}
+.lead{font-size:18px;line-height:1.75;color:var(--sub);max-width:700px;margin:0 0 30px}.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:25px}
+button,.button{border:1px solid #334b3e;border-radius:13px;background:#20362a;color:var(--ink);padding:13px 17px;font-size:14px;font-weight:720;cursor:pointer;transition:.15s}button:hover,.button:hover{background:#2e4b39}
+button.primary,.button.primary{background:var(--green);color:#102018;border:0}button.primary:hover{background:#b0f9c0}
+button:disabled{opacity:.45;cursor:not-allowed}a.textlink{font-weight:650;color:var(--green);font-size:14px;align-self:center}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:52px 0}.stat{padding:22px;background:#ffffff06;border:1px solid #ffffff18;border-radius:18px}.stat b{display:block;font-size:26px;margin-bottom:5px}.stat span{font-size:12px;color:var(--sub)}
+.layout{display:grid;grid-template-columns:1.15fr .85fr;gap:20px;margin-top:26px}.panel{border:1px solid var(--stroke);border-radius:24px;padding:28px;background:linear-gradient(140deg,#192b22,#111b16)}.panel h2{margin:0 0 10px;font-size:23px;letter-spacing:-.6px}.panel p{color:var(--sub);font-size:13px;line-height:1.7}.field{margin-top:18px}.field label{display:block;font-size:12px;color:#becac0;font-weight:650;margin-bottom:8px}.field input{width:100%;border:1px solid #375040;background:#0a1510;color:white;border-radius:11px;padding:14px;font-size:14px;outline:0}.field input:focus{border-color:var(--green)}.row{display:flex;gap:9px;margin-top:20px;flex-wrap:wrap}.notice{margin-top:16px;border:1px solid #345a44;border-radius:12px;padding:12px;color:#addfbd;background:#133024;font-size:12px;line-height:1.6;overflow-wrap:anywhere}.notice.error{border-color:#874944;color:#ffc2b7;background:#3b1f1c}.output{background:#07130d;border:1px solid #2c4434;border-radius:12px;margin-top:18px;padding:16px;white-space:pre-wrap;word-break:break-all;max-height:310px;overflow:auto;color:#c5f2cb;font-size:11px;line-height:1.8}
+.steps{display:grid;gap:15px;margin-top:22px}.step{display:flex;gap:14px;align-items:start;padding:12px 0;border-bottom:1px solid #ffffff12}.num{display:grid;place-items:center;width:27px;height:27px;border:1px solid #4a7154;color:var(--green);border-radius:50%;font-size:12px;flex:none}.step b{font-size:14px}.step p{margin:5px 0 0}
+.section-head{font-size:15px;text-transform:uppercase;letter-spacing:1.5px;color:var(--green);margin:58px 0 16px}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.card{background:#ffffff07;border:1px solid #ffffff1a;border-radius:18px;padding:24px}.card h3{margin:12px 0;font-size:17px}.card p{font-size:13px;line-height:1.7;color:var(--sub)}
+footer{border-top:1px solid #ffffff1a;color:#93a399;font-size:12px;max-width:1170px;margin:auto;padding:30px 24px;display:flex;gap:12px;flex-wrap:wrap;justify-content:space-between}
+code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+@media(max-width:760px){h1{letter-spacing:-2.5px}.layout,.cards{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}.panel{padding:20px}nav{gap:10px}nav a:nth-child(2){display:none}}
+</style>
+</head>
+<body>
+<header><a class="brand" href="/v2"><strong>33</strong>JACK <small>V2 / CELO</small></a>
+<nav><a href="#how">How it works</a><a href="/app">Original app</a><a class="pill" href="https://github.com/mushee-io/33jack/tree/v2/celo-agent-infrastructure" target="_blank" rel="noopener">Open source ↗</a></nav></header>
+<main>
+<div class="eyebrow"><span class="dot"></span> CELO MAINNET · 42220 · DEVELOPMENT ALPHA</div>
+<h1>Finance for agents.<br><em>Built on Celo.</em></h1>
+<p class="lead">33JACK keeps its invoice intelligence, business workflows and messaging channels — while adding Celo-native payment infrastructure other AI agents can integrate. Prepare an unsigned USDC payment, authorise it in your wallet, and verify real settlement onchain.</p>
+<div class="actions"><a class="button primary" href="#console">Try the Celo payment console ↗</a><a class="button" href="/app">Explore 33JACK workspace</a><a class="textlink" href="/api/celo-v2?action=manifest">Agent API manifest ↗</a></div>
+<div class="stats"><div class="stat"><b>42220</b><span>Dedicated Celo Mainnet chain ID</span></div><div class="stat"><b>USDC</b><span>Native Circle token, six decimals</span></div><div class="stat"><b>Wallet-first</b><span>No agent-held private keys or automatic transfers</span></div></div>
+<div class="layout" id="console">
+<section class="panel">
+<div class="eyebrow">LIVE MAINNET — NO SIMULATED SETTLEMENT</div><h2 style="margin-top:15px">Celo payment console</h2>
+<p>Use a Celo-compatible wallet and a small test amount of real USDC. Nothing moves without approval in your wallet. Fees apply onchain.</p>
+<div class="field"><label for="recipient">Recipient wallet address</label><input id="recipient" autocomplete="off" spellcheck="false" placeholder="0x..."></div>
+<div class="field"><label for="amount">Amount in native USDC</label><input id="amount" autocomplete="off" inputmode="decimal" placeholder="0.25"></div>
+<div class="field"><label for="requestId">Agent request ID (optional)</label><input id="requestId" autocomplete="off" placeholder="supplier-invoice-1024"></div>
+<div class="row"><button id="prepareBtn">1 · Prepare unsigned intent</button><button id="connectBtn">2 · Connect wallet</button><button class="primary" id="sendBtn" disabled>3 · Approve & send</button></div>
+<div id="wallet" class="notice">No wallet connected. This prototype never stores a signing key.</div>
+<pre id="prepared" class="output" hidden></pre>
+<div class="field"><label for="txHash">Transaction hash (auto-fills when wallet sends)</label><input id="txHash" autocomplete="off" spellcheck="false" placeholder="0x..."></div>
+<div class="row"><button id="verifyBtn">4 · Verify Celo receipt</button></div>
+<div id="message" class="notice" role="status" aria-live="polite">Prepare an intent, connect your wallet and sign only after reviewing exact recipient and amount.</div>
+</section>
+<section class="panel" id="how"><div class="eyebrow">AGENT → 33JACK → CELO</div><h2 style="margin-top:15px">One financial layer.<br>Many AI agents.</h2>
+<div class="steps">
+<div class="step"><span class="num">1</span><div><b>Agent requests a payment</b><p>External software submits a recipient, amount and idempotency reference to 33JACK's public preparation API.</p></div></div>
+<div class="step"><span class="num">2</span><div><b>33JACK validates and prepares</b><p>Input validation and a configurable preparation limit protect against malformed intents. No money is moved.</p></div></div>
+<div class="step"><span class="num">3</span><div><b>The authorised wallet signs</b><p>The payer reviews transaction details and independently confirms in their wallet. Agents do not receive blank-cheque access.</p></div></div>
+<div class="step"><span class="num">4</span><div><b>33JACK verifies proof</b><p>The API checks the successful Celo receipt and matching native-USDC Transfer event, then returns a real block explorer link.</p></div></div>
+</div>
+<div class="notice">Alpha limitations: agent identity, Self Agent ID, ERC-8004, delegated smart-account policies, persistent idempotency, and escrow are still milestones. A prepared payment is <b>not</b> a completed transaction.</div>
+</section>
+</div>
+<p class="section-head">Built for an ecosystem of agents</p>
+<div class="cards"><div class="card"><h3>Businesses and teams</h3><p>Invoice review, supplier payment proposals and reconciliation, reusing 33JACK's existing financial operator.</p></div>
+<div class="card"><h3>External AI agents</h3><p>HTTP interfaces for preparing payment calldata and verifying actual USDC settlement on Celo.</p></div>
+<div class="card"><h3>Developers on Celo</h3><p>Open integration points and clear transaction evidence; identity registry and smart-account capabilities are next.</p></div></div>
+</main>
+<footer><span>33JACK V2 · Mushee · Celo mainnet prototype</span><span>Real payments require explicit wallet signature. Do not send funds until you verify the recipient.</span></footer>
+<script>
+const $ = (id) => document.getElementById(id);
+let connected = null, prepared = null;
+const CHAIN = "0xa4ec";
+function message(text,error=false){ const node=$("message");node.textContent=text;node.className="notice"+(error?" error":""); }
+function walletText(text,error=false){$("wallet").textContent=text;$("wallet").className="notice"+(error?" error":"");}
+async function call(action,data){const r=await fetch("/api/celo-v2?action="+action,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)});const j=await r.json();if(!r.ok)throw Error(j.error||j.reason||j.state||"Request failed");return j;}
+function unlock(){ $("sendBtn").disabled=!(prepared&&connected); }
+$("prepareBtn").addEventListener("click",async()=>{
+ try{ const form={recipient:$("recipient").value.trim(),amount:$("amount").value.trim(),requestId:$("requestId").value.trim(),...(connected?{payer:connected}:{})};prepared=(await call("prepare",form));$("prepared").hidden=false;$("prepared").textContent=JSON.stringify(prepared,null,2);message("Unsigned payment ready. Review the exact recipient and amount before signing.");unlock();}
+ catch(e){prepared=null;unlock();message(e.message,true);}
+});
+$("connectBtn").addEventListener("click",async()=>{
+ try{if(!window.ethereum)throw Error("No compatible EVM wallet detected. Install a Celo-compatible wallet first.");
+ const [address]=await window.ethereum.request({method:"eth_requestAccounts"});if(!address)throw Error("Wallet did not return an address");
+ let chain=await window.ethereum.request({method:"eth_chainId"});if(String(chain).toLowerCase()!==CHAIN){
+ try{await window.ethereum.request({method:"wallet_switchEthereumChain",params:[{chainId:CHAIN}]});}
+ catch(e){if(e.code!==4902)throw e;await window.ethereum.request({method:"wallet_addEthereumChain",params:[{chainId:CHAIN,chainName:"Celo",nativeCurrency:{name:"CELO",symbol:"CELO",decimals:18},rpcUrls:["https://forno.celo.org"],blockExplorerUrls:["https://celoscan.io"]}]});}
+ }
+ chain=await window.ethereum.request({method:"eth_chainId"});if(String(chain).toLowerCase()!==CHAIN)throw Error("Wrong network. Switch wallet to Celo Mainnet.");
+ connected=address;walletText("Connected: "+connected+" · Celo Mainnet");prepared=null;$("prepared").hidden=true;unlock();message("Wallet connected. Prepare a new intent bound to this wallet.");}
+ catch(e){connected=null;unlock();walletText(e.message,true);}
+});
+$("sendBtn").addEventListener("click",async()=>{
+ try{if(!connected||!prepared)throw Error("Connect and prepare a payment first.");
+ if(String(await window.ethereum.request({method:"eth_chainId"})).toLowerCase()!==CHAIN)throw Error("Wallet network changed. Switch to Celo Mainnet.");
+ if(prepared.txRequest.from && prepared.txRequest.from.toLowerCase()!==connected.toLowerCase())throw Error("Prepared payer does not match connected wallet.");
+ const {chainId,...tx}=prepared.txRequest;
+ const hash=await window.ethereum.request({method:"eth_sendTransaction",params:[{...tx,from:connected}]});
+ $("txHash").value=hash;message("Transaction submitted to Celo. Hash: "+hash+" — verify when confirmed. This is not yet proof of settlement.");}
+ catch(e){message(e.message,true);}
+});
+$("verifyBtn").addEventListener("click",async()=>{
+ try{const data={txHash:$("txHash").value.trim(),recipient:$("recipient").value.trim(),amount:$("amount").value.trim()};if(connected)data.payer=connected;
+ const r=await call("verify",data);if(!r.ok)throw Error("Not yet confirmed: "+r.state);
+ message("Confirmed on Celo Mainnet ("+r.confirmations+" block confirmations): "+r.amount+" USDC transferred. Explorer: "+r.explorer);
+ const link=document.createElement("a");link.href=r.explorer;link.target="_blank";link.rel="noopener";link.textContent=" Open CeloScan ↗";link.style.color="#8df0a7";$("message").append(link);
+ }catch(e){message(e.message,true);}
+});
+if(window.ethereum){window.ethereum.on?.("accountsChanged",()=>{connected=null;prepared=null;unlock();walletText("Wallet account changed. Reconnect to continue.");});window.ethereum.on?.("chainChanged",()=>{connected=null;prepared=null;unlock();walletText("Wallet network changed. Reconnect on Celo Mainnet.");});}
+</script>
+</body></html>
